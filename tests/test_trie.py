@@ -11,7 +11,7 @@ def test_insert_find() -> None:
 
     text = "set to 10"
     results = list(trie.find(text))
-    assert results == [(8, "1", 1), (9, "10", 10)]
+    assert results == [(9, "10", 10)]
     for end_pos, number_text, number_value in results:
         start_pos = end_pos - len(number_text)
         assert text[start_pos:end_pos] == number_text
@@ -29,8 +29,8 @@ def test_insert_find() -> None:
     ) == [
         (8, "1", 1),
         (19, "two", 2),
-        (45, "two", 2),
         (45, "twenty two", 22),
+        (45, "two", 2),
     ]
 
     # Test a character in between
@@ -41,6 +41,10 @@ def test_insert_find() -> None:
 
     # Test empty string
     assert not list(trie.find(""))
+
+    # Test word boundaries
+    assert not list(trie.find("1two"))
+    assert list(trie.find("1,two")) == [(1, "1", 1), (5, "two", 2)]
 
 
 def test_multiple_values() -> None:
