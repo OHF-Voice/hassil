@@ -29,6 +29,17 @@ dependencies = [
     "unicode-rbnf>=2.3,<3"
 ]
 
+[project.optional-dependencies]
+dev = [
+    "black==24.8.0",
+    "flake8==7.2.0",
+    "mypy==1.14.0",
+    "pylint==3.2.7",
+    "pytest==8.3.5",
+    "tox==4.26.0",
+    "build==1.2.2",
+]
+
 [project.urls]
 "Source Code" = "http://github.com/OHF-Voice/hassil"
 

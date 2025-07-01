@@ -1,3 +1,4 @@
+from enum import unique
 from hassil.trie import Trie
 
 
