@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.urls]
-"Source Code" = "http://github.com/home-assistant/hassil"
+"Source Code" = "http://github.com/OHF-Voice/hassil"
 
 [tool.setuptools]
 platforms = ["any"]
