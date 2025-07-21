@@ -483,7 +483,9 @@ def expression_to_fst(
         if slot_list is None:
             slot_list = intents.slot_lists.get(list_ref.list_name)
 
-        if isinstance(slot_list, TextSlotList):
+        if isinstance(slot_list, TextSlotList) or (
+            (slot_list is None) and (list_ref.slot_name in ("name", "area", "floor"))
+        ):
             list_name = list_ref.slot_name
             domains = None
             if (list_name == "name") and (intent_data.requires_context is not None):

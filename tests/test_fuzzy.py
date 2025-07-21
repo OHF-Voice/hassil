@@ -1,16 +1,326 @@
+import io
 from collections import defaultdict
 import itertools
 import time
 from pathlib import Path
 
+import pytest
 from yaml import safe_load
 
 from hassil import Intents, TextSlotList
 from hassil.expression import Group
 from hassil.fuzzy import FuzzyNgramMatcher, SlotCombinationInfo
 
+LISTS_YAML = """
+lists:
+  name:
+    values:
+      - in: "Front Door"
+        out: "Front Door"
+        context:
+          domain: "lock"
+        metadata:
+          domain: "lock"
+      - in: "Kitchen Door"
+        out: "Kitchen Door"
+        context:
+          domain: "lock"
+        metadata:
+          domain: "lock"
+      - in: "Poorly Installed Door"
+        out: "Poorly Installed Door"
+        context:
+          domain: "lock"
+        metadata:
+          domain: "lock"
+      - in: "Openable Lock"
+        out: "Openable Lock"
+        context:
+          domain: "lock"
+        metadata:
+          domain: "lock"
+      - in: "Humidifier"
+        out: "Humidifier"
+        context:
+          domain: "humidifier"
+        metadata:
+          domain: "humidifier"
+      - in: "Dehumidifier"
+        out: "Dehumidifier"
+        context:
+          domain: "humidifier"
+        metadata:
+          domain: "humidifier"
+      - in: "Hygrostat"
+        out: "Hygrostat"
+        context:
+          domain: "humidifier"
+        metadata:
+          domain: "humidifier"
+      - in: "Demo Water Heater"
+        out: "Demo Water Heater"
+        context:
+          domain: "water_heater"
+        metadata:
+          domain: "water_heater"
+      - in: "Demo Water Heater Celsius"
+        out: "Demo Water Heater Celsius"
+        context:
+          domain: "water_heater"
+        metadata:
+          domain: "water_heater"
+      - in: "Pergola Roof"
+        out: "Pergola Roof"
+        context:
+          domain: "cover"
+          cover_supports_position: false
+        metadata:
+          domain: "cover"
+      - in: "Heat pump"
+        out: "Heat pump"
+        context:
+          domain: "climate"
+        metadata:
+          domain: "climate"
+      - in: "Hvac"
+        out: "Hvac"
+        context:
+          domain: "climate"
+        metadata:
+          domain: "climate"
+      - in: "Ecobee"
+        out: "Ecobee"
+        context:
+          domain: "climate"
+        metadata:
+          domain: "climate"
+      - in: "Overhead light"
+        out: "Overhead light"
+        context:
+          domain: "light"
+          light_supports_color: true
+          light_supports_brightness: true
+        metadata:
+          domain: "light"
+      - in: "Bedroom Light"
+        out: "Bedroom Light"
+        context:
+          domain: "light"
+          light_supports_color: true
+          light_supports_brightness: true
+        metadata:
+          domain: "light"
+      - in: "Kitchen Lights"
+        out: "Kitchen Lights"
+        context:
+          domain: "light"
+          light_supports_color: true
+          light_supports_brightness: true
+        metadata:
+          domain: "light"
+      - in: "Office Light"
+        out: "Office Light"
+        context:
+          domain: "light"
+          light_supports_color: true
+          light_supports_brightness: true
+        metadata:
+          domain: "light"
+      - in: "Living Room Lights"
+        out: "Living Room Lights"
+        context:
+          domain: "light"
+          light_supports_color: true
+          light_supports_brightness: true
+        metadata:
+          domain: "light"
+      - in: "Entrance Color + White Lights"
+        out: "Entrance Color + White Lights"
+        context:
+          domain: "light"
+          light_supports_color: true
+          light_supports_brightness: true
+        metadata:
+          domain: "light"
+      - in: "Outside Temperature"
+        out: "Outside Temperature"
+        context:
+          domain: "sensor"
+        metadata:
+          domain: "sensor"
+      - in: "Outside Humidity"
+        out: "Outside Humidity"
+        context:
+          domain: "sensor"
+        metadata:
+          domain: "sensor"
+      - in: "Kitchen Window"
+        out: "Kitchen Window"
+        context:
+          domain: "cover"
+          cover_supports_position: false
+        metadata:
+          domain: "cover"
+      - in: "Hall Window"
+        out: "Hall Window"
+        context:
+          domain: "cover"
+          cover_supports_position: true
+        metadata:
+          domain: "cover"
+      - in: "Living Room Window"
+        out: "Living Room Window"
+        context:
+          domain: "cover"
+          cover_supports_position: true
+        metadata:
+          domain: "cover"
+      - in: "Garage Door"
+        out: "Garage Door"
+        context:
+          domain: "cover"
+          cover_supports_position: false
+        metadata:
+          domain: "cover"
+      - in: "Living Room Fan"
+        out: "Living Room Fan"
+        context:
+          domain: "fan"
+          fan_supports_speed: true
+        metadata:
+          domain: "fan"
+      - in: "Ceiling Fan"
+        out: "Ceiling Fan"
+        context:
+          domain: "fan"
+          fan_supports_speed: true
+        metadata:
+          domain: "fan"
+      - in: "Percentage Full Fan"
+        out: "Percentage Full Fan"
+        context:
+          domain: "fan"
+          fan_supports_speed: true
+        metadata:
+          domain: "fan"
+      - in: "Percentage Limited Fan"
+        out: "Percentage Limited Fan"
+        context:
+          domain: "fan"
+          fan_supports_speed: true
+        metadata:
+          domain: "fan"
+      - in: "Preset Only Limited Fan"
+        out: "Preset Only Limited Fan"
+        context:
+          domain: "fan"
+          fan_supports_speed: false
+        metadata:
+          domain: "fan"
+      - in: "Decorative Lights"
+        out: "Decorative Lights"
+        context:
+          domain: "switch"
+        metadata:
+          domain: "switch"
+      - in: "A.C."
+        out: "A.C."
+        context:
+          domain: "switch"
+        metadata:
+          domain: "switch"
+      - in: "Search"
+        out: "Search"
+        context:
+          domain: "media_player"
+          media_player_supports_pause: false
+          media_player_supports_volume_set: false
+          media_player_supports_next_track: false
+        metadata:
+          domain: "media_player"
+      - in: "Leaving the house"
+        out: "Leaving the house"
+        context:
+          domain: "script"
+        metadata:
+          domain: "script"
+      - in: "Shopping List"
+        out: "Shopping List"
+        context:
+          domain: "todo"
+        metadata:
+          domain: "todo"
+      - in: "Downstairs Chromecast"
+        out: "Downstairs Chromecast"
+        context:
+          domain: "media_player"
+          media_player_supports_pause: true
+          media_player_supports_volume_set: false
+          media_player_supports_next_track: false
+        metadata:
+          domain: "media_player"
+      - in: "Demo Weather South"
+        out: "Demo Weather South"
+        context:
+          domain: "weather"
+        metadata:
+          domain: "weather"
+      - in: "Liste des courses"
+        out: "Liste des courses"
+        context:
+          domain: "todo"
+        metadata:
+          domain: "todo"
+      - in: "Todo List 1"
+        out: "Todo List 1"
+        context:
+          domain: "todo"
+        metadata:
+          domain: "todo"
+      - in: "party time"
+        out: "party time"
+        context:
+          domain: "scene"
+        metadata:
+          domain: "scene"
+      - in: "TV"
+        out: "Family Room Google TV"
+        context:
+          domain: "media_player"
+          media_player_supports_pause: true
+          media_player_supports_volume_set: false
+          media_player_supports_next_track: false
+        metadata:
+          domain: "media_player"
+      - in: "Media Player"
+        out: "Media Player"
+        context:
+          domain: "media_player"
+          media_player_supports_pause: true
+          media_player_supports_volume_set: true
+          media_player_supports_next_track: false
+        metadata:
+          domain: "media_player"
+  area:
+    values:
+      - "Living Room"
+      - "Kitchen"
+      - "cuisine"
+      - "Bedroom"
+      - "Garage"
+      - "Entrance"
+      - "Office"
+      - "kontoret"
+      - "Basement"
+      - "Test Area"
+  floor:
+    values:
+      - "First floor"
+"""
 
-def test_match() -> None:
+
+@pytest.fixture(name="matcher", scope="session")
+def matcher_fixture() -> FuzzyNgramMatcher:
     with open(
         "/home/hansenm/opt/intent-sentences/intents.yaml", "r", encoding="utf-8"
     ) as f:
@@ -34,18 +344,31 @@ def test_match() -> None:
     intents = Intents.from_files(
         Path("/home/hansenm/opt/intent-sentences/sentences/en").glob("*.yaml")
     )
+
+    with io.StringIO(LISTS_YAML) as f:
+        lists_dict = safe_load(f)["lists"]
+
     intents.slot_lists["name"] = TextSlotList.from_tuples(
-        [
-            ("living room lamp", "living room lamp", {"domain": "light"}),
-            ("tv", "tv", {"domain": "media_player"}),
-            ("garage door", "garage door", {"domain": "cover"}),
-        ]
+        (name_info["in"], name_info["out"], name_info["context"])
+        for name_info in lists_dict["name"]["values"]
     )
-    intents.slot_lists["area"] = TextSlotList.from_strings(
-        ["kitchen", "living room", "office"]
+    intents.slot_lists["area"] = TextSlotList.from_strings(lists_dict["area"]["values"])
+    intents.slot_lists["floor"] = TextSlotList.from_strings(
+        lists_dict["floor"]["values"]
     )
 
-    intent_slot_list_names = {}
+    # intents.slot_lists["name"] = TextSlotList.from_tuples(
+    #     [
+    #         ("living room lamp", "living room lamp", {"domain": "light"}),
+    #         ("tv", "tv", {"domain": "media_player"}),
+    #         ("garage door", "garage door", {"domain": "cover"}),
+    #     ]
+    # )
+    # intents.slot_lists["area"] = TextSlotList.from_strings(
+    #     ["kitchen", "living room", "office"]
+    # )
+
+    intent_slot_list_names = defaultdict(set)
     for intent_info in intents.intents.values():
         for intent_data in intent_info.data:
             if intent_data.expansion_rules:
@@ -66,7 +389,9 @@ def test_match() -> None:
 
                 for list_ref in sentence.expression.list_references(expansion_rules):
                     if list_ref.slot_name in intent_slot_names:
-                        intent_slot_list_names[list_ref.list_name] = list_ref.slot_name
+                        intent_slot_list_names[list_ref.list_name].add(
+                            list_ref.slot_name
+                        )
 
     for rule_body in intents.expansion_rules.values():
         if not isinstance(rule_body.expression, Group):
@@ -74,7 +399,7 @@ def test_match() -> None:
 
         for list_ref in rule_body.expression.list_references(intents.expansion_rules):
             if list_ref.slot_name in intent_slot_names:
-                intent_slot_list_names[list_ref.list_name] = list_ref.slot_name
+                intent_slot_list_names[list_ref.list_name].add(list_ref.slot_name)
 
     # print(intent_slot_list_names)
 
@@ -86,11 +411,170 @@ def test_match() -> None:
         domain_keywords={
             "light": ["light", "lights"],
             "fan": ["fan", "fans"],
-            "cover": ["window", "windows"],
+            "cover": [
+                "window",
+                "windows",
+                "curtain",
+                "curtains",
+                "door",
+                "doors",
+                "garage door",
+            ],
         },
     )
 
-    start_time = time.monotonic()
-    matcher.match("open all of the windows in the  kitchen area")
-    end_time = time.monotonic()
-    print(end_time - start_time)
+    return matcher
+
+
+def test_domain_only(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("turn on the lights in this room")
+    assert result is not None
+    assert result.intent_name == "HassTurnOn"
+    assert result.slots.keys() == {"domain"}
+    assert result.slots["domain"] == "light"
+
+
+def test_name_only(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("turn off that tv right now")
+    assert result is not None
+    assert result.intent_name == "HassTurnOff"
+    assert result.slots.keys() == {"name"}
+    assert result.slots["name"] == "Family Room Google TV"
+
+
+def test_name_area(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("kitchen A.C. on")
+    assert result is not None
+    assert result.intent_name == "HassTurnOn"
+    assert result.slots.keys() == {"name", "area"}
+    assert result.slots["name"] == "A.C."
+    assert result.slots["area"] == "Kitchen"
+
+
+def test_domain_area_device_class(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("open up all of the windows in the kitchen area please")
+    assert result is not None
+    assert result.intent_name == "HassTurnOn"
+    assert result.slots.keys() == {"domain", "area", "device_class"}
+    assert result.slots["domain"] == "cover"
+    assert result.slots["device_class"] == "window"
+    assert result.slots["area"] == "Kitchen"
+
+
+def test_brightness(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("overhead light 50% brightness")
+    assert result is not None
+    assert result.intent_name == "HassLightSet"
+    assert result.slots.keys() == {"name", "brightness"}
+    assert result.slots["name"] == "Overhead light"
+    assert result.slots["brightness"] == 50
+
+
+def test_temperature(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("how is the temperature")
+    assert result is not None
+    assert result.intent_name == "HassClimateGetTemperature"
+    assert not result.slots
+
+
+def test_temperature_name(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("ecobee temp")
+    assert result is not None
+    assert result.intent_name == "HassClimateGetTemperature"
+    assert result.slots.keys() == {"name"}
+    assert result.slots["name"] == "Ecobee"
+
+
+def test_start_timer(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("5 minute timer")
+    assert result is not None
+    assert result.intent_name == "HassStartTimer"
+    assert result.slots.keys() == {"minutes"}
+    assert result.slots["minutes"] == 5
+
+
+def test_cancel_timer(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("cancel 5 minutes")
+    assert result is not None
+    assert result.intent_name == "HassCancelTimer"
+    assert result.slots.keys() == {"start_minutes"}
+    assert result.slots["start_minutes"] == 5
+
+
+def test_cancel_all_timer(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("stop all of these timers")
+    assert result is not None
+    assert result.intent_name == "HassCancelAllTimers"
+    assert not result.slots
+
+
+def test_increase_timer(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("add 5 minutes")
+    assert result is not None
+    assert result.intent_name == "HassIncreaseTimer"
+    assert result.slots.keys() == {"minutes"}
+    assert result.slots["minutes"] == 5
+
+
+def test_get_time(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("time now")
+    assert result is not None
+    assert result.intent_name == "HassGetCurrentTime"
+    assert not result.slots
+
+
+def test_get_date(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("date today")
+    assert result is not None
+    assert result.intent_name == "HassGetCurrentDate"
+    assert not result.slots
+
+
+def test_weather(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("weather")
+    assert result is not None
+    assert result.intent_name == "HassGetWeather"
+    assert not result.slots
+
+
+def test_weather_name(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("demo weather south")
+    assert result is not None
+    assert result.intent_name == "HassGetWeather"
+    assert result.slots.keys() == {"name"}
+    assert result.slots["name"] == "Demo Weather South"
+
+
+def test_set_temperature(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("make it 72 degrees")
+    assert result is not None
+    assert result.intent_name == "HassClimateSetTemperature"
+    assert result.slots.keys() == {"temperature"}
+    assert result.slots["temperature"] == 72
+
+
+def test_set_color(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("red bedroom")
+    assert result is not None
+    assert result.intent_name == "HassLightSet"
+    assert result.slots.keys() == {"area", "color"}
+    assert result.slots["area"] == "Bedroom"
+    assert result.slots["color"] == "red"
+
+
+def test_set_volume(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("TV 50")
+    assert result is not None
+    assert result.intent_name == "HassSetVolume"
+    assert result.slots.keys() == {"name", "volume_level"}
+    assert result.slots["name"] == "Family Room Google TV"
+    assert result.slots["volume_level"] == 50
+
+
+def test_set_position(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("hall window 50")
+    assert result is not None
+    assert result.intent_name == "HassSetPosition"
+    assert result.slots.keys() == {"name", "position"}
+    assert result.slots["name"] == "Hall Window"
+    assert result.slots["position"] == 50
