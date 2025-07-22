@@ -47,6 +47,9 @@ def test_insert_find() -> None:
     assert not list(trie.find("1two"))
     assert list(trie.find("1,two")) == [(1, "1", 1), (5, "two", 2)]
 
+    # ° is not a word boundary
+    assert not list(trie.find("10°"))
+
 
 def test_multiple_values() -> None:
     """Test that we can insert multiple values for the same string."""

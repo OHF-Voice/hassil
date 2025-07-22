@@ -50,29 +50,12 @@ class Trie:
 
             current_children = current_node.children
 
-    def _is_word_boundary(self, text: str, index: int) -> bool:
-        """Return True if the character at `index` is at a valid word boundary."""
-        if index == 0:
-            # Start of text
-            return True
-
-        prev = text[index - 1]
-        return prev.isspace() or unicodedata.category(prev).startswith("P")
-
-    def _is_end_boundary(self, text: str, index: int) -> bool:
-        """Return True if the character at `index` is at a valid end word boundary."""
-        return (
-            (index == len(text))  # end of text
-            or text[index].isspace()
-            or unicodedata.category(text[index]).startswith("P")
-        )
-
     def find(self, text: str, unique: bool = True) -> Iterable[Tuple[int, str, Any]]:
         """Yield (end_pos, text, value) pairs of all words found in the string."""
         visited: Set[int] = set()
 
         for i in range(len(text)):
-            if not self._is_word_boundary(text, i):
+            if not _is_word_boundary(text, i):
                 continue
 
             current_children = self.roots
@@ -88,7 +71,7 @@ class Trie:
 
                 if (
                     (node.text is not None)
-                    and self._is_end_boundary(text, match_end)
+                    and _is_end_boundary(text, match_end)
                     and ((not unique) or (node.id not in visited))
                 ):
                     if unique:
@@ -104,3 +87,32 @@ class Trie:
         current_id = self._next_id
         self._next_id += 1
         return current_id
+
+
+def _is_boundary_category(text: str) -> bool:
+    """Return True if text Unicode category is a word boundary."""
+    text_category = unicodedata.category(text)
+    if not text_category:
+        return False
+
+    # punctuation
+    return text_category[0] == "P"
+
+
+def _is_word_boundary(text: str, index: int) -> bool:
+    """Return True if the character at `index` is at a valid word boundary."""
+    if index == 0:
+        # Start of text
+        return True
+
+    prev = text[index - 1]
+    return prev.isspace() or _is_boundary_category(prev)
+
+
+def _is_end_boundary(text: str, index: int) -> bool:
+    """Return True if the character at `index` is at a valid end word boundary."""
+    return (
+        (index == len(text))  # end of text
+        or text[index].isspace()
+        or _is_boundary_category(text[index])
+    )

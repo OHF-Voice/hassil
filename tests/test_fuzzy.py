@@ -578,3 +578,11 @@ def test_set_position(matcher: FuzzyNgramMatcher) -> None:
     assert result.slots.keys() == {"name", "position"}
     assert result.slots["name"] == "Hall Window"
     assert result.slots["position"] == 50
+
+
+def test_degrees(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("72°")
+    assert result is not None
+    assert result.intent_name == "HassClimateSetTemperature"
+    assert result.slots.keys() == {"temperature"}
+    assert result.slots["temperature"] == 72

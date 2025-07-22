@@ -37,6 +37,7 @@ class ListSpanValue(SpanValue):
 class RangeSpanValue(SpanValue):
     list_name: str
     slot_name: str
+    end_symbol: Optional[str] = None
 
 
 @dataclass
@@ -89,6 +90,7 @@ class FuzzyNgramMatcher:
         span_map = defaultdict(list)
         tokens = text_norm.split()
         spans = self._trie.find(text_norm, unique=False)
+
         for end_idx, span_text, span_value in spans:
             start_idx = end_idx - len(span_text)
             token_start_idx = len(text_norm[:start_idx].split())
@@ -102,7 +104,7 @@ class FuzzyNgramMatcher:
         best_slot_names = None
 
         # TODO
-        # print(span_map)
+        print(span_map)
 
         logprob_cache = defaultdict(dict)
         for pos_and_values in self._find_interpretations(tokens, span_map):
@@ -120,7 +122,12 @@ class FuzzyNgramMatcher:
                 for i, value in enumerate(values):
                     if isinstance(value, (ListSpanValue, RangeSpanValue)):
                         if i == 0:
-                            tokens.append(f"{{{value.slot_name}}}")
+                            token = f"{{{value.slot_name}}}"
+                            if isinstance(value, RangeSpanValue) and value.end_symbol:
+                                # % or °
+                                token += value.end_symbol
+
+                            tokens.append(token)
                         token_slot_names.add(value.slot_name)
                     elif i == 0:
                         if isinstance(value, SpanValue):
@@ -161,7 +168,7 @@ class FuzzyNgramMatcher:
                 # if intent_name != "HassLightSet":
                 #     continue
 
-                print(tokens, intent_score)
+                print(intent_name, tokens, intent_score)
 
                 if (min_score is not None) and (intent_score < min_score):
                     continue
@@ -233,7 +240,7 @@ class FuzzyNgramMatcher:
                     best_score = intent_score
                     best_interp = pos_and_values
                     best_slot_names = slot_names
-                    print(best_score, best_intent, best_slot_names)
+                    # print(best_score, best_intent, best_slot_names)
                     # print(token_combo_key, combo_key)
                     break
 
@@ -317,7 +324,7 @@ class FuzzyNgramMatcher:
             for slot_name in slot_names:
                 if isinstance(slot_list, TextSlotList):
                     text_list: TextSlotList = slot_list
-                    trie_list_name = f"{{{list_name}}}"
+                    # trie_list_name = f"{{{list_name}}}"
                     for value in text_list.values:
                         for value_text in sample_expression(value.text_in):
                             trie.insert(
@@ -337,8 +344,9 @@ class FuzzyNgramMatcher:
                             )
                 elif isinstance(slot_list, RangeSlotList):
                     range_list: RangeSlotList = slot_list
-                    trie_list_name = f"{{range_{range_list.start},{range_list.stop},{range_list.step}}}"
+                    # trie_list_name = f"{{range_{range_list.start},{range_list.stop},{range_list.step}}}"
                     is_percentage = range_list.type == "percentage"
+                    is_temperature = range_list.type == "temperature"
                     # if trie_list_name in used_range_list_names:
                     #     continue
 
@@ -354,7 +362,13 @@ class FuzzyNgramMatcher:
 
                         trie.insert(num_str, num_value)
                         if is_percentage:
-                            trie.insert(f"{num_str}%", num_value)
+                            trie.insert(
+                                f"{num_str}%", replace(num_value, end_symbol="%")
+                            )
+                        elif is_temperature:
+                            trie.insert(
+                                f"{num_str}°", replace(num_value, end_symbol="°")
+                            )
 
                         if number_engine is not None:
                             num_words = number_cache.get(num)
