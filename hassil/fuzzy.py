@@ -1,43 +1,37 @@
+import itertools
 import math
 from collections import defaultdict
-from dataclasses import dataclass, replace
-from typing import Collection, TextIO
-from pathlib import Path
 from collections.abc import Iterable
-from typing import Tuple, Dict, Any, TypedDict, Optional, Union, List, Set
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Collection, Dict, List, Optional, Set, TextIO, Tuple, Union
 
-from _pytest.main import validate_basetemp
 from unicode_rbnf import RbnfEngine
 
-from .intents import Intents, TextSlotList, RangeSlotList
-from .trie import Trie
+from .intents import Intents, RangeSlotList, TextSlotList
 from .sample import sample_expression
+from .trie import Trie
 from .util import normalize_text, remove_punctuation
 
+BOS = "<s>"
+EOS = "</s>"
 
-class NgramProb(TypedDict):
-    log_prob: float
-    backoff: Optional[float]
+# (log_prob, backoff)
+NgramProb = Tuple[float, Optional[float]]
+
+
+@dataclass
+class SpanSlotValue:
+    value: Any
+    name_domain: Optional[str] = None
+    suffix: Optional[str] = None
 
 
 @dataclass
 class SpanValue:
     text: str
-    value: Any
-
-
-@dataclass
-class ListSpanValue(SpanValue):
-    list_name: str
-    slot_name: str
-    domain: Optional[str]
-
-
-@dataclass
-class RangeSpanValue(SpanValue):
-    list_name: str
-    slot_name: str
-    end_symbol: Optional[str] = None
+    slots: Dict[str, SpanSlotValue] = field(default_factory=dict)
+    inferred_domain: Optional[str] = None
 
 
 @dataclass
@@ -52,7 +46,12 @@ class FuzzyResult:
     score: Optional[float]
 
 
-NgramModelType = Dict[Tuple[str, ...], NgramProb]
+@dataclass
+class NgramModel:
+    order: int
+
+    # token ngram -> probability
+    probs: Dict[Tuple[str, ...], NgramProb] = field(default_factory=dict)
 
 
 class FuzzyNgramMatcher:
@@ -71,14 +70,13 @@ class FuzzyNgramMatcher:
         self.slot_combinations = slot_combinations
         self.domain_keywords = domain_keywords
 
-        self.all_slot_combo_keys = {
-            combo_key
-            for intent_combos in self.slot_combinations.values()
-            for combo_key in intent_combos
-        }
+        self._slot_combo_intents: Dict[Tuple[str, ...], Set[str]] = defaultdict(set)
+        for intent_name, intent_combos in self.slot_combinations.items():
+            for slot_combo in intent_combos:
+                self._slot_combo_intents[slot_combo].add(intent_name)
 
         self._trie = self._build_trie()
-        self._intent_models: Dict[str, NgramModelType] = self._load_models()
+        self._intent_models: Dict[str, NgramModel] = self._load_models()
 
     def match(
         self,
@@ -86,181 +84,164 @@ class FuzzyNgramMatcher:
         min_score: Optional[float] = -20,
         close_score: Optional[float] = 1,
     ):
-        text_norm = remove_punctuation(normalize_text(text)).casefold()
-        span_map = defaultdict(list)
+        text_norm = remove_punctuation(normalize_text(text)).lower()
+
+        # (start, end) -> value
+        span_map: Dict[Tuple[int, int], SpanValue] = {}
         tokens = text_norm.split()
         spans = self._trie.find(text_norm, unique=False)
 
+        # Get values for spans in text
         for end_idx, span_text, span_value in spans:
             start_idx = end_idx - len(span_text)
             token_start_idx = len(text_norm[:start_idx].split())
             token_end_idx = token_start_idx + len(text_norm[start_idx:end_idx].split())
+            span_map[(token_start_idx, token_end_idx)] = span_value
 
-            span_map[(token_start_idx, token_end_idx)].append(span_value)
-
-        best_intent = None
-        best_score = None
-        best_interp = None
-        best_slot_names = None
-
-        # TODO
-        print(span_map)
+        # Determine best intent match
+        best_intent_name: Optional[str] = None
+        best_score: Optional[float] = None
+        best_slots: Optional[Dict[str, Any]] = None
 
         logprob_cache = defaultdict(dict)
         for pos_and_values in self._find_interpretations(tokens, span_map):
-            scores = {}
-            tokens = ["<s>"]
-            token_slot_names = set()
+            values = []
             for _start_idx, _end_idx, value in pos_and_values:
-                if isinstance(value, list):
-                    values = value
-                    value = value[0]
-                else:
-                    values = [value]
+                if isinstance(value, str):
+                    values.append([(value, None, None)])
+                elif isinstance(value, SpanValue):
+                    span_value = value
+                    sub_values = []
+                    if span_value.inferred_domain:
+                        # Inferred domain is separate
+                        values.append([(None, "domain", span_value.inferred_domain)])
 
-                # NOTE: Only the first value holds a valid token
-                for i, value in enumerate(values):
-                    if isinstance(value, (ListSpanValue, RangeSpanValue)):
-                        if i == 0:
-                            token = f"{{{value.slot_name}}}"
-                            if isinstance(value, RangeSpanValue) and value.end_symbol:
-                                # % or °
-                                token += value.end_symbol
+                    if span_value.slots:
+                        # Possible slot interpretations
+                        sub_values.extend(
+                            (f"{{{slot_name}}}", slot_name, slot_value)
+                            for slot_name, slot_value in span_value.slots.items()
+                            if slot_name != "domain"
+                        )
+                    else:
+                        sub_values.append((span_value.text, None, None))
 
-                            tokens.append(token)
-                        token_slot_names.add(value.slot_name)
-                    elif i == 0:
-                        if isinstance(value, SpanValue):
-                            tokens.append(value.text)
-                        else:
-                            tokens.append(value)
+                    if sub_values:
+                        values.append(sub_values)
 
-            tokens.append("</s>")
-
-            # TODO
-            # print(pos_and_values)
-
-            if not tokens:
-                continue
-
-            # TODO: skip impossible slot combinations here
-            # tokens = ["<s>", "{minutes}", ..., "{brightness}", "</s>"]
-            token_combo_key = tuple(sorted(token_slot_names))
-            if token_combo_key not in self.all_slot_combo_keys:
-                # TODO
-                # print("Invalid combo:", token_combo_key)
-                continue
-
-            for intent_name, model in self._intent_models.items():
-                scores[intent_name] = get_log_prob_cached(
-                    tokens,
-                    model,
-                    cache=logprob_cache[intent_name],
-                ) / len(tokens)
-
-            # print(scores)
-            # print("")
-
-            for intent_name, intent_score in sorted(
-                scores.items(), key=lambda kv: kv[1], reverse=True
-            ):
-                # TODO
-                # if intent_name != "HassLightSet":
-                #     continue
-
-                print(intent_name, tokens, intent_score)
-
-                if (min_score is not None) and (intent_score < min_score):
-                    continue
-
-                # if (best_score is not None) and (intent_score < best_score):
-                #     continue
-
-                slot_names = set()
+            # Iterate over possible interpretations, each one made up of
+            # (token, slot name, slot value) tuples.
+            for tokens_and_values in itertools.product(*values):
+                interp_tokens = [BOS]
+                slot_names: List[str] = []
+                slot_values: Dict[str, Any] = {}
                 name_domain: Optional[str] = None
-                for _start_idx, _end_idx, values in pos_and_values:
-                    if not isinstance(values, list):
-                        values = [values]
+                for token, slot_name, slot_value in tokens_and_values:
+                    if token:
+                        interp_tokens.append(token)
 
-                    for value in values:
-                        if isinstance(value, ListSpanValue):
-                            slot_names.add(value.slot_name)
-                            if value.slot_name == "name":
-                                name_domain = value.domain
-                        elif isinstance(value, RangeSpanValue):
-                            slot_names.add(value.slot_name)
+                    if slot_name:
+                        slot_names.append(slot_name)
+                        slot_values[slot_name] = slot_value
+                        if (
+                            isinstance(slot_value, SpanSlotValue)
+                            and slot_value.name_domain
+                        ):
+                            # Interpretation is restricted by domain of {name}
+                            name_domain = slot_value.name_domain
 
                 combo_key = tuple(sorted(slot_names))
-                slot_combos = self.slot_combinations[intent_name].get(combo_key)
-                # print(intent_name, combo_key)
-                if not slot_combos:
-                    # Invalid slot combination
-                    # print(
-                    #     "Skipping invalid slot combination:",
-                    #     intent_name,
-                    #     slot_names,
-                    #     pos_and_values,
-                    # )
+                intents_to_check = self._slot_combo_intents.get(combo_key)
+                if not intents_to_check:
+                    # Slot combination is not valid for any intent
                     continue
 
-                name_domain_match = True
                 if name_domain:
-                    name_domain_match = False
-                    for slot_combo in slot_combos:
-                        if (not slot_combo.name_domains) or (
-                            name_domain in slot_combo.name_domains
-                        ):
-                            name_domain_match = True
-                            break
+                    # Filter intents by slot combination and name domain
+                    intents_to_check = [
+                        intent_name
+                        for intent_name in intents_to_check
+                        if any(
+                            combo_info.name_domains
+                            and (name_domain in combo_info.name_domains)
+                            for combo_info in self.slot_combinations[intent_name][
+                                combo_key
+                            ]
+                        )
+                    ]
 
-                if not name_domain_match:
-                    # Invalid name domain
+                if not intents_to_check:
+                    # Not a valid slot combination
                     continue
 
-                if (
-                    (best_score is None)
-                    or (intent_score > best_score)
-                    or (
-                        (close_score is not None)
-                        and (
-                            (abs(intent_score - best_score) < close_score)
-                            and slot_names
+                interp_tokens.append(EOS)
+
+                # Score token string for each intent
+                for intent_name in intents_to_check:
+                    intent_ngram_model = self._intent_models[intent_name]
+                    intent_score = get_log_prob_cached(
+                        interp_tokens,
+                        intent_ngram_model,
+                        cache=logprob_cache[intent_name],
+                    ) / len(tokens)
+
+                    # TODO
+                    # print(
+                    #     interp_tokens, combo_key, intent_name, intent_score, slot_values
+                    # )
+
+                    if (min_score is not None) and (intent_score < min_score):
+                        # Below minimum score
+                        continue
+
+                    if (
+                        (best_score is None)
+                        or (intent_score > best_score)
+                        or (
+                            (close_score is not None)
+                            # prefer more slots matched and "name" slots
                             and (
-                                (not best_slot_names)
-                                or (len(slot_names) > len(best_slot_names))
-                                or (
-                                    (len(slot_names) == len(best_slot_names))
-                                    and ("name" in slot_names)
+                                (abs(intent_score - best_score) < close_score)
+                                and slot_names
+                                and (
+                                    (not best_slots)
+                                    or (len(slot_values) > len(best_slots))
+                                    or (
+                                        (len(slot_values) == len(best_slots))
+                                        and ("name" in slot_values)
+                                    )
                                 )
                             )
                         )
+                    ):
+                        best_intent_name = intent_name
+                        best_score = intent_score
+                        best_slots = slot_values
+                        # print(best_score, best_intent_name, best_slots)
+
+        if not best_intent_name:
+            return None
+
+        return FuzzyResult(
+            intent_name=best_intent_name,
+            slots=(
+                {
+                    slot_name: (
+                        slot_value.value
+                        if isinstance(slot_value, SpanSlotValue)
+                        else slot_value
                     )
-                ):
-                    best_intent = intent_name
-                    best_score = intent_score
-                    best_interp = pos_and_values
-                    best_slot_names = slot_names
-                    # print(best_score, best_intent, best_slot_names)
-                    # print(token_combo_key, combo_key)
-                    break
+                    for slot_name, slot_value in best_slots.items()
+                }
+                if best_slots is not None
+                else {}
+            ),
+            score=best_score,
+        )
 
-        best_slots = {}
-        if best_interp:
-            for _start_idx, _end_idx, values in best_interp:
-                if not isinstance(values, list):
-                    values = [values]
-                for value in values:
-                    if isinstance(value, (ListSpanValue, RangeSpanValue)):
-                        best_slots[value.slot_name] = value.value
+    # -------------------------------------------------------------------------
 
-        if best_intent:
-            return FuzzyResult(
-                intent_name=best_intent, slots=best_slots, score=best_score
-            )
-
-        return None
-
-    def _find_interpretations(self, tokens, span_map, pos=0, cache=None):
+    def _find_interpretations(self, tokens, span_map, pos: int = 0, cache=None):
         if cache is None:
             cache = {}
 
@@ -278,26 +259,12 @@ class FuzzyNgramMatcher:
 
         # Option 2: Replace with a slot or skip if span exists
         for end in range(pos + 1, len(tokens) + 1):
-            if (pos, end) not in span_map:
+            replacement = span_map.get((pos, end))
+            if replacement is None:
                 continue
-            replacements = span_map[(pos, end)]
-            domain_replacement = next(
-                (
-                    r
-                    for r in replacements
-                    if isinstance(r, ListSpanValue) and r.slot_name == "domain"
-                ),
-                None,
-            )
-            for repl in replacements:
-                if repl == domain_replacement:
-                    continue
 
-                if domain_replacement:
-                    repl = [repl, domain_replacement]
-
-                for rest in self._find_interpretations(tokens, span_map, end, cache):
-                    interpretations.append([(pos, end, repl)] + rest)
+            for rest in self._find_interpretations(tokens, span_map, end, cache):
+                interpretations.append([(pos, end, replacement)] + rest)
 
         cache[pos] = interpretations
         return interpretations
@@ -313,94 +280,85 @@ class FuzzyNgramMatcher:
             pass
 
         number_cache: Dict[Union[int, float], str] = {}
+        span_values: Dict[str, SpanValue] = {}
 
-        # used_range_list_names = set()
         for list_name, slot_list in self.intents.slot_lists.items():
             slot_names = self.intent_slot_list_names.get(list_name)
             if not slot_names:
                 continue
 
-            # TODO: collect slot names into single trie value
             for slot_name in slot_names:
                 if isinstance(slot_list, TextSlotList):
                     text_list: TextSlotList = slot_list
-                    # trie_list_name = f"{{{list_name}}}"
                     for value in text_list.values:
                         for value_text in sample_expression(value.text_in):
-                            trie.insert(
-                                value_text.lower(),
-                                ListSpanValue(
-                                    text=value_text,
-                                    value=value.value_out,
-                                    # list_name=trie_list_name,
-                                    list_name=list_name,
-                                    slot_name=slot_name,
-                                    domain=(
-                                        value.context.get("domain")
-                                        if value.context
-                                        else None
-                                    ),
+                            span_value = span_values.get(value_text)
+                            if span_value is None:
+                                span_value = SpanValue(text=value_text)
+                                span_values[value_text] = span_value
+                                trie.insert(value_text.lower(), span_value)
+
+                            span_value.slots[slot_name] = SpanSlotValue(
+                                value=value.value_out,
+                                name_domain=(
+                                    value.context.get("domain")
+                                    if value.context
+                                    else None
                                 ),
                             )
                 elif isinstance(slot_list, RangeSlotList):
                     range_list: RangeSlotList = slot_list
-                    # trie_list_name = f"{{range_{range_list.start},{range_list.stop},{range_list.step}}}"
-                    is_percentage = range_list.type == "percentage"
-                    is_temperature = range_list.type == "temperature"
-                    # if trie_list_name in used_range_list_names:
-                    #     continue
+                    suffix: Optional[str] = None
+                    if range_list.type == "percentage":
+                        suffix = "%"
+                    elif range_list.type == "temperature":
+                        suffix = "°"
 
                     for num in range_list.get_numbers():
-                        num_str = str(num)
-                        num_value = RangeSpanValue(
-                            text=num_str,
-                            value=num,
-                            # list_name=trie_list_name,
-                            list_name=list_name,
-                            slot_name=slot_name,
-                        )
-
-                        trie.insert(num_str, num_value)
-                        if is_percentage:
-                            trie.insert(
-                                f"{num_str}%", replace(num_value, end_symbol="%")
-                            )
-                        elif is_temperature:
-                            trie.insert(
-                                f"{num_str}°", replace(num_value, end_symbol="°")
-                            )
+                        num_strs = [str(num)]
+                        if suffix:
+                            # Add % or °
+                            num_strs.append(f"{num_strs[0]}{suffix}")
 
                         if number_engine is not None:
+                            # 1 -> one
                             num_words = number_cache.get(num)
                             if num_words is None:
                                 num_words = number_engine.format_number(num).text
                                 number_cache[num] = num_words
 
-                            trie.insert(num_words, replace(num_value, text=num_words))
+                            num_strs.append(num_words)
 
-                    # used_range_list_names.add(trie_list_name)
+                        for num_str in num_strs:
+                            span_value = span_values.get(num_str)
+                            if span_value is None:
+                                span_value = SpanValue(text=num_str)
+                                span_values[num_str] = span_value
+                                trie.insert(num_str.lower(), span_value)
 
+                            span_value.slots[slot_name] = SpanSlotValue(
+                                value=num, suffix=suffix
+                            )
+
+        # "Skip" words/phrases like "please" and "could you"
         for skip_word in self.intents.skip_words:
-            trie.insert(skip_word, SpanValue(text="<skip>", value=None))
+            trie.insert(skip_word, SpanValue(text="<skip>"))
 
-        # TODO
+        # Map keywords to inferred domain, e.g. "lights" in "turn on the lights"
         for domain, keywords in self.domain_keywords.items():
             for keyword in keywords:
-                trie.insert(
-                    keyword,
-                    ListSpanValue(
-                        text=keyword,
-                        value=domain,
-                        list_name="domain",
-                        slot_name="domain",
-                        domain=None,
-                    ),
-                )
+                span_value = span_values.get(keyword)
+                if span_value is None:
+                    span_value = SpanValue(text=keyword)
+                    span_values[keyword] = span_value
+                    trie.insert(keyword, span_value)
+
+                span_value.inferred_domain = domain
 
         return trie
 
-    def _load_models(self) -> Dict[str, NgramModelType]:
-        models: Dict[str, NgramModelType] = {}
+    def _load_models(self) -> Dict[str, NgramModel]:
+        models: Dict[str, NgramModel] = {}
 
         for intent_name in self.intents.intents:
             intent_arpa_path = self.arpa_dir / f"{intent_name}.arpa"
@@ -413,22 +371,29 @@ class FuzzyNgramMatcher:
         return models
 
 
-def load_arpa(arpa_file: TextIO) -> NgramModelType:
-    model: NgramModelType = {}
+# -----------------------------------------------------------------------------
+
+
+def load_arpa(arpa_file: TextIO) -> NgramModel:
+    """Load APRA n-gram file."""
+    model = NgramModel(order=0)
     order = 0
     reading_ngrams = False
 
     for line in arpa_file:
         line = line.strip()
 
-        # Start of new section?
+        # Start of new section
         if line.startswith("\\") and "-grams:" in line:
             order = int(line.strip("\\-grams:"))
+            model.order = max(order, model.order)
             reading_ngrams = True
             continue
-        elif line.startswith("\\end\\"):
+
+        if line.startswith("\\end\\"):
             break
-        elif not line or line.startswith("ngram") or not reading_ngrams:
+
+        if (not line) or line.startswith("ngram") or (not reading_ngrams):
             continue
 
         parts = line.split()
@@ -439,21 +404,19 @@ def load_arpa(arpa_file: TextIO) -> NgramModelType:
         ngram = tuple(parts[1 : 1 + order])
         backoff = float(parts[1 + order]) if len(parts) > 1 + order else None
 
-        model[ngram] = {"log_prob": log_prob}
-        if backoff is not None:
-            model[ngram]["backoff"] = backoff
+        model.probs[ngram] = (log_prob, backoff)
 
     return model
 
 
 def get_log_prob_cached(
     tokens: Iterable[str],
-    model: NgramModelType,
-    order: int = 5,
+    model: NgramModel,
     unk_log_prob: float = -15.0,
     min_log_prob: Optional[float] = None,
     cache: Optional[Dict[Tuple[str, ...], float]] = None,
 ) -> float:
+    """Get log probability of token sequence relative to an n-gram model."""
     if cache is None:
         cache = {}
 
@@ -461,7 +424,7 @@ def get_log_prob_cached(
     context: List[str] = []
 
     for word in tokens:
-        if word == "<s>":
+        if word == BOS:
             # Skip BOS since its not a normal token
             context.append(word)
             continue
@@ -481,16 +444,20 @@ def get_log_prob_cached(
         found = False
 
         # Try highest to lowest n-gram order
-        for n in reversed(range(1, order + 1)):
+        for n in reversed(range(1, model.order + 1)):
             prefix = tuple(context[-(n - 1) :]) if n > 1 else ()
             ngram = prefix + (word,)
 
-            if ngram in model:
-                total_log_prob += model[ngram]["log_prob"]
+            if ngram in model.probs:
+                total_log_prob += model.probs[ngram][0]
                 found = True
                 break
-            elif (prefix in model) and ("backoff" in model[prefix]):
-                total_log_prob += model[prefix]["backoff"]
+
+            if (prefix_info := model.probs.get(prefix)) and (
+                prefix_info[1] is not None
+            ):
+                # backoff
+                total_log_prob += prefix_info[1]
 
         if not found:
             total_log_prob += unk_log_prob

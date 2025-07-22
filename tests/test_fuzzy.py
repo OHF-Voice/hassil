@@ -1,7 +1,6 @@
 import io
-from collections import defaultdict
 import itertools
-import time
+from collections import defaultdict
 from pathlib import Path
 
 import pytest
@@ -10,6 +9,7 @@ from yaml import safe_load
 from hassil import Intents, TextSlotList
 from hassil.expression import Group
 from hassil.fuzzy import FuzzyNgramMatcher, SlotCombinationInfo
+from hassil.intents import WildcardSlotList
 
 LISTS_YAML = """
 lists:
@@ -333,6 +333,12 @@ def matcher_fixture() -> FuzzyNgramMatcher:
 
         for combo_info in intent_info.get("slot_combinations", {}).values():
             combo_key = tuple(sorted(combo_info["slots"]))
+
+            # TODO
+            if ("name" in combo_key) and ("Timer" in intent_name):
+                # Ignore wildcard names
+                continue
+
             name_domains = combo_info.get("name_domains")
             if name_domains:
                 name_domains = set(itertools.chain.from_iterable(name_domains.values()))
@@ -383,15 +389,18 @@ def matcher_fixture() -> FuzzyNgramMatcher:
                 if not isinstance(sentence.expression, Group):
                     continue
 
-                # inferred_domain = intent_data.slots.get("domain")
-                # if inferred_domain:
-                #     print(sentence.text)
-
                 for list_ref in sentence.expression.list_references(expansion_rules):
-                    if list_ref.slot_name in intent_slot_names:
-                        intent_slot_list_names[list_ref.list_name].add(
-                            list_ref.slot_name
-                        )
+                    if list_ref.slot_name not in intent_slot_names:
+                        continue
+
+                    slot_list = intent_data.slot_lists.get(list_ref.list_name)
+                    if slot_list is None:
+                        slot_list = intents.slot_lists.get(list_ref.list_name)
+
+                    if (slot_list is None) or (slot_list is WildcardSlotList):
+                        continue
+
+                    intent_slot_list_names[list_ref.list_name].add(list_ref.slot_name)
 
     for rule_body in intents.expansion_rules.values():
         if not isinstance(rule_body.expression, Group):
@@ -400,8 +409,6 @@ def matcher_fixture() -> FuzzyNgramMatcher:
         for list_ref in rule_body.expression.list_references(intents.expansion_rules):
             if list_ref.slot_name in intent_slot_names:
                 intent_slot_list_names[list_ref.list_name].add(list_ref.slot_name)
-
-    # print(intent_slot_list_names)
 
     matcher = FuzzyNgramMatcher(
         intents,
@@ -586,3 +593,10 @@ def test_degrees(matcher: FuzzyNgramMatcher) -> None:
     assert result.intent_name == "HassClimateSetTemperature"
     assert result.slots.keys() == {"temperature"}
     assert result.slots["temperature"] == 72
+
+
+def test_nevermind(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("nevermind, it's working")
+    assert result is not None
+    assert result.intent_name == "HassNevermind"
+    assert not result.slots.keys()

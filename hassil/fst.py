@@ -1,30 +1,28 @@
 """Convert hassil templates to finite state transducers (FSTs)."""
 
 import itertools
-from dataclasses import dataclass, field
-from enum import Enum, auto
-from typing import Optional, List, Dict, Set, TextIO, Tuple
 from collections import defaultdict, deque
 from collections.abc import Collection
+from dataclasses import dataclass, field
+from enum import Enum, auto
+from typing import Dict, List, Optional, Set, TextIO, Tuple
 
 from hassil import (
+    Alternative,
     Expression,
     Group,
-    Alternative,
-    Sequence,
-    TextSlotList,
-    SlotList,
-    RangeSlotList,
-    RuleReference,
-    ListReference,
     IntentData,
     Intents,
-    TextChunk,
-    Sentence,
+    ListReference,
     Permutation,
-    WildcardSlotList,
+    RangeSlotList,
+    RuleReference,
+    Sentence,
+    Sequence,
+    SlotList,
+    TextChunk,
+    TextSlotList,
 )
-
 
 EPS = "<eps>"
 SPACE = "<space>"
@@ -508,11 +506,6 @@ def expression_to_fst(
             )
 
         if isinstance(slot_list, RangeSlotList):
-            range_list: RangeSlotList = slot_list
-
-            # list_name = (
-            #     f"{{range_{range_list.start},{range_list.stop},{range_list.step}}}"
-            # )
             list_name = list_ref.slot_name
             list_ref_node.list_names.append((list_name, None))
             return expression_to_fst(

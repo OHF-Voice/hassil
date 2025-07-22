@@ -21,7 +21,7 @@ PUNCTUATION_END = re.compile(rf"{PUNCTUATION_PATTERN}$")
 PUNCTUATION_END_SPACE = re.compile(rf"{PUNCTUATION_PATTERN}\s*$")
 PUNCTUATION_START_WORD = re.compile(rf"(?<=\W){PUNCTUATION_PATTERN}(?=\w)")
 PUNCTUATION_END_WORD = re.compile(rf"(?<=\w){PUNCTUATION_PATTERN_NO_PERIOD}(?=\W)")
-PUNCTUATION_END_PERIOD = re.compile(rf"(?<!\w\.\w)\.(?=\W)")  # ignore initialisms
+PUNCTUATION_END_PERIOD = re.compile(r"(?<!\w\.\w)\.(?=\W)")  # ignore initialisms
 PUNCTUATION_WORD = re.compile(rf"(?<=\W){PUNCTUATION_PATTERN}(?=\W)")
 
 INITIALISM_DOTS_AT_END = re.compile(r"\b(?:\w\.){2,}$")
