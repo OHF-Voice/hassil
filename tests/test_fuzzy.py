@@ -8,8 +8,9 @@ from yaml import safe_load
 
 from hassil import Intents, TextSlotList
 from hassil.expression import Group
-from hassil.fuzzy import FuzzyNgramMatcher, SlotCombinationInfo
+from hassil.fuzzy import FuzzyNgramMatcher, SlotCombinationInfo, FuzzySlotValue
 from hassil.intents import WildcardSlotList
+from hassil.ngram import NgramModel
 
 LISTS_YAML = """
 lists:
@@ -410,9 +411,15 @@ def matcher_fixture() -> FuzzyNgramMatcher:
             if list_ref.slot_name in intent_slot_names:
                 intent_slot_list_names[list_ref.list_name].add(list_ref.slot_name)
 
+    intent_models = {}
+    for arpa_path in Path("/home/hansenm/opt/intent-sentences/fuzzy/en").glob("*.arpa"):
+        with open(arpa_path, "r", encoding="utf-8") as arpa_file:
+            intent_name = arpa_path.stem
+            intent_models[intent_name] = NgramModel.from_arpa(arpa_file)
+
     matcher = FuzzyNgramMatcher(
         intents,
-        "/home/hansenm/opt/intent-sentences/fuzzy/en",
+        intent_models,
         intent_slot_list_names,
         slot_combinations,
         domain_keywords={
@@ -438,7 +445,7 @@ def test_domain_only(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassTurnOn"
     assert result.slots.keys() == {"domain"}
-    assert result.slots["domain"] == "light"
+    assert result.slots["domain"] == FuzzySlotValue(value="light", text="lights")
 
 
 def test_name_only(matcher: FuzzyNgramMatcher) -> None:
@@ -446,7 +453,10 @@ def test_name_only(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassTurnOff"
     assert result.slots.keys() == {"name"}
-    assert result.slots["name"] == "Family Room Google TV"
+    assert result.slots["name"] == FuzzySlotValue(
+        value="Family Room Google TV", text="TV"
+    )
+    assert result.name_domain == "media_player"
 
 
 def test_name_area(matcher: FuzzyNgramMatcher) -> None:
@@ -454,8 +464,9 @@ def test_name_area(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassTurnOn"
     assert result.slots.keys() == {"name", "area"}
-    assert result.slots["name"] == "A.C."
-    assert result.slots["area"] == "Kitchen"
+    assert result.slots["name"] == FuzzySlotValue(value="A.C.", text="A.C.")
+    assert result.slots["area"] == FuzzySlotValue(value="Kitchen", text="Kitchen")
+    assert result.name_domain == "switch"
 
 
 def test_domain_area_device_class(matcher: FuzzyNgramMatcher) -> None:
@@ -463,9 +474,11 @@ def test_domain_area_device_class(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassTurnOn"
     assert result.slots.keys() == {"domain", "area", "device_class"}
-    assert result.slots["domain"] == "cover"
-    assert result.slots["device_class"] == "window"
-    assert result.slots["area"] == "Kitchen"
+    assert result.slots["domain"] == FuzzySlotValue(value="cover", text="windows")
+    assert result.slots["device_class"] == FuzzySlotValue(
+        value="window", text="windows"
+    )
+    assert result.slots["area"] == FuzzySlotValue(value="Kitchen", text="Kitchen")
 
 
 def test_brightness(matcher: FuzzyNgramMatcher) -> None:
@@ -473,8 +486,11 @@ def test_brightness(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassLightSet"
     assert result.slots.keys() == {"name", "brightness"}
-    assert result.slots["name"] == "Overhead light"
-    assert result.slots["brightness"] == 50
+    assert result.slots["name"] == FuzzySlotValue(
+        value="Overhead light", text="Overhead light"
+    )
+    assert result.slots["brightness"] == FuzzySlotValue(value=50, text="50%")
+    assert result.name_domain == "light"
 
 
 def test_temperature(matcher: FuzzyNgramMatcher) -> None:
@@ -489,7 +505,8 @@ def test_temperature_name(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassClimateGetTemperature"
     assert result.slots.keys() == {"name"}
-    assert result.slots["name"] == "Ecobee"
+    assert result.slots["name"] == FuzzySlotValue(value="Ecobee", text="Ecobee")
+    assert result.name_domain == "climate"
 
 
 def test_start_timer(matcher: FuzzyNgramMatcher) -> None:
@@ -497,7 +514,7 @@ def test_start_timer(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassStartTimer"
     assert result.slots.keys() == {"minutes"}
-    assert result.slots["minutes"] == 5
+    assert result.slots["minutes"] == FuzzySlotValue(value=5, text="5")
 
 
 def test_cancel_timer(matcher: FuzzyNgramMatcher) -> None:
@@ -505,7 +522,7 @@ def test_cancel_timer(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassCancelTimer"
     assert result.slots.keys() == {"start_minutes"}
-    assert result.slots["start_minutes"] == 5
+    assert result.slots["start_minutes"] == FuzzySlotValue(value=5, text="5")
 
 
 def test_cancel_all_timer(matcher: FuzzyNgramMatcher) -> None:
@@ -520,7 +537,7 @@ def test_increase_timer(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassIncreaseTimer"
     assert result.slots.keys() == {"minutes"}
-    assert result.slots["minutes"] == 5
+    assert result.slots["minutes"] == FuzzySlotValue(value=5, text="5")
 
 
 def test_get_time(matcher: FuzzyNgramMatcher) -> None:
@@ -549,7 +566,10 @@ def test_weather_name(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassGetWeather"
     assert result.slots.keys() == {"name"}
-    assert result.slots["name"] == "Demo Weather South"
+    assert result.slots["name"] == FuzzySlotValue(
+        value="Demo Weather South", text="Demo Weather South"
+    )
+    assert result.name_domain == "weather"
 
 
 def test_set_temperature(matcher: FuzzyNgramMatcher) -> None:
@@ -557,7 +577,7 @@ def test_set_temperature(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassClimateSetTemperature"
     assert result.slots.keys() == {"temperature"}
-    assert result.slots["temperature"] == 72
+    assert result.slots["temperature"] == FuzzySlotValue(value=72, text="72")
 
 
 def test_set_color(matcher: FuzzyNgramMatcher) -> None:
@@ -565,8 +585,8 @@ def test_set_color(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassLightSet"
     assert result.slots.keys() == {"area", "color"}
-    assert result.slots["area"] == "Bedroom"
-    assert result.slots["color"] == "red"
+    assert result.slots["area"] == FuzzySlotValue(value="Bedroom", text="Bedroom")
+    assert result.slots["color"] == FuzzySlotValue(value="red", text="red")
 
 
 def test_set_volume(matcher: FuzzyNgramMatcher) -> None:
@@ -574,8 +594,11 @@ def test_set_volume(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassSetVolume"
     assert result.slots.keys() == {"name", "volume_level"}
-    assert result.slots["name"] == "Family Room Google TV"
-    assert result.slots["volume_level"] == 50
+    assert result.slots["name"] == FuzzySlotValue(
+        value="Family Room Google TV", text="TV"
+    )
+    assert result.slots["volume_level"] == FuzzySlotValue(value=50, text="50")
+    assert result.name_domain == "media_player"
 
 
 def test_set_position(matcher: FuzzyNgramMatcher) -> None:
@@ -583,8 +606,11 @@ def test_set_position(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassSetPosition"
     assert result.slots.keys() == {"name", "position"}
-    assert result.slots["name"] == "Hall Window"
-    assert result.slots["position"] == 50
+    assert result.slots["name"] == FuzzySlotValue(
+        value="Hall Window", text="Hall Window"
+    )
+    assert result.slots["position"] == FuzzySlotValue(value=50, text="50")
+    assert result.name_domain == "cover"
 
 
 def test_degrees(matcher: FuzzyNgramMatcher) -> None:
@@ -592,7 +618,7 @@ def test_degrees(matcher: FuzzyNgramMatcher) -> None:
     assert result is not None
     assert result.intent_name == "HassClimateSetTemperature"
     assert result.slots.keys() == {"temperature"}
-    assert result.slots["temperature"] == 72
+    assert result.slots["temperature"] == FuzzySlotValue(value=72, text="72°")
 
 
 def test_nevermind(matcher: FuzzyNgramMatcher) -> None:

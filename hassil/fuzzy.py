@@ -1,23 +1,33 @@
+"""Fuzzy matching using n-grams."""
+
 import itertools
 import math
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Collection, Dict, List, Optional, Set, TextIO, Tuple, Union
+from typing import (
+    Any,
+    Collection,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    Final,
+)
 
 from unicode_rbnf import RbnfEngine
 
-from .intents import Intents, RangeSlotList, TextSlotList
+from .intents import Intents, RangeSlotList, SlotList, TextSlotList
 from .sample import sample_expression
 from .trie import Trie
 from .util import normalize_text, remove_punctuation
+from .ngram import NgramModel, BOS, EOS
 
-BOS = "<s>"
-EOS = "</s>"
-
-# (log_prob, backoff)
-NgramProb = Tuple[float, Optional[float]]
+MIN_SCORE: Final = -20.0
+CLOSE_SCORE: Final = 1.0
 
 
 @dataclass
@@ -40,18 +50,20 @@ class SlotCombinationInfo:
 
 
 @dataclass
-class FuzzyResult:
-    intent_name: str
-    slots: Dict[str, Any]
-    score: Optional[float]
+class FuzzySlotValue:
+    value: Any
+    text: str
 
 
 @dataclass
-class NgramModel:
-    order: int
+class FuzzyResult:
+    intent_name: str
+    slots: Dict[str, FuzzySlotValue]
+    score: Optional[float] = None
+    name_domain: Optional[str] = None
 
-    # token ngram -> probability
-    probs: Dict[Tuple[str, ...], NgramProb] = field(default_factory=dict)
+
+# -----------------------------------------------------------------------------
 
 
 class FuzzyNgramMatcher:
@@ -59,13 +71,14 @@ class FuzzyNgramMatcher:
     def __init__(
         self,
         intents: Intents,
-        arpa_dir: Union[str, Path],
+        intent_models: Dict[str, NgramModel],
         intent_slot_list_names: Dict[str, Collection[str]],
         slot_combinations: Dict[str, Dict[Tuple[str, ...], List[SlotCombinationInfo]]],
         domain_keywords: Dict[str, Collection[str]],
+        slot_lists: Optional[Dict[str, SlotList]] = None,
     ) -> None:
         self.intents = intents
-        self.arpa_dir = Path(arpa_dir)
+        self.intent_models = intent_models
         self.intent_slot_list_names = intent_slot_list_names
         self.slot_combinations = slot_combinations
         self.domain_keywords = domain_keywords
@@ -75,14 +88,13 @@ class FuzzyNgramMatcher:
             for slot_combo in intent_combos:
                 self._slot_combo_intents[slot_combo].add(intent_name)
 
-        self._trie = self._build_trie()
-        self._intent_models: Dict[str, NgramModel] = self._load_models()
+        self._trie = self._build_trie(slot_lists)
 
     def match(
         self,
         text: str,
-        min_score: Optional[float] = -20,
-        close_score: Optional[float] = 1,
+        min_score: Optional[float] = MIN_SCORE,
+        close_score: Optional[float] = CLOSE_SCORE,
     ):
         text_norm = remove_punctuation(normalize_text(text)).lower()
 
@@ -102,29 +114,41 @@ class FuzzyNgramMatcher:
         best_intent_name: Optional[str] = None
         best_score: Optional[float] = None
         best_slots: Optional[Dict[str, Any]] = None
+        best_name_domain: Optional[str] = None
 
         logprob_cache = defaultdict(dict)
         for pos_and_values in self._find_interpretations(tokens, span_map):
             values = []
             for _start_idx, _end_idx, value in pos_and_values:
                 if isinstance(value, str):
-                    values.append([(value, None, None)])
+                    values.append([(value, None, None, value)])
                 elif isinstance(value, SpanValue):
                     span_value = value
                     sub_values = []
                     if span_value.inferred_domain:
                         # Inferred domain is separate
-                        values.append([(None, "domain", span_value.inferred_domain)])
+                        values.append(
+                            [
+                                (
+                                    None,
+                                    "domain",
+                                    span_value.inferred_domain,
+                                    span_value.text,
+                                )
+                            ]
+                        )
 
                     if span_value.slots:
                         # Possible slot interpretations
                         sub_values.extend(
-                            (f"{{{slot_name}}}", slot_name, slot_value)
+                            (f"{{{slot_name}}}", slot_name, slot_value, span_value.text)
                             for slot_name, slot_value in span_value.slots.items()
                             if slot_name != "domain"
                         )
                     else:
-                        sub_values.append((span_value.text, None, None))
+                        sub_values.append(
+                            (span_value.text, None, None, span_value.text)
+                        )
 
                     if sub_values:
                         values.append(sub_values)
@@ -134,21 +158,21 @@ class FuzzyNgramMatcher:
             for tokens_and_values in itertools.product(*values):
                 interp_tokens = [BOS]
                 slot_names: List[str] = []
-                slot_values: Dict[str, Any] = {}
+                slot_values: Dict[str, Tuple[Any, str]] = {}
                 name_domain: Optional[str] = None
-                for token, slot_name, slot_value in tokens_and_values:
+                for token, slot_name, slot_value, slot_text in tokens_and_values:
                     if token:
                         interp_tokens.append(token)
 
                     if slot_name:
                         slot_names.append(slot_name)
-                        slot_values[slot_name] = slot_value
-                        if (
-                            isinstance(slot_value, SpanSlotValue)
-                            and slot_value.name_domain
-                        ):
-                            # Interpretation is restricted by domain of {name}
-                            name_domain = slot_value.name_domain
+                        if isinstance(slot_value, SpanSlotValue):
+                            slot_values[slot_name] = (slot_value.value, slot_text)
+                            if slot_value.name_domain:
+                                # Interpretation is restricted by domain of {name}
+                                name_domain = slot_value.name_domain
+                        else:
+                            slot_values[slot_name] = (slot_value, slot_text)
 
                 combo_key = tuple(sorted(slot_names))
                 intents_to_check = self._slot_combo_intents.get(combo_key)
@@ -178,11 +202,9 @@ class FuzzyNgramMatcher:
 
                 # Score token string for each intent
                 for intent_name in intents_to_check:
-                    intent_ngram_model = self._intent_models[intent_name]
-                    intent_score = get_log_prob_cached(
-                        interp_tokens,
-                        intent_ngram_model,
-                        cache=logprob_cache[intent_name],
+                    intent_ngram_model = self.intent_models[intent_name]
+                    intent_score = intent_ngram_model.get_log_prob(
+                        interp_tokens, cache=logprob_cache[intent_name]
                     ) / len(tokens)
 
                     # TODO
@@ -205,11 +227,12 @@ class FuzzyNgramMatcher:
                                 and slot_names
                                 and (
                                     (not best_slots)
-                                    or (len(slot_values) > len(best_slots))
-                                    or (
-                                        (len(slot_values) == len(best_slots))
-                                        and ("name" in slot_values)
-                                    )
+                                    # or (len(slot_values) > len(best_slots))
+                                    # or (
+                                    #     (len(slot_values) == len(best_slots))
+                                    #     and ("name" in slot_values)
+                                    # )
+                                    or ("name" in slot_values)
                                 )
                             )
                         )
@@ -217,6 +240,8 @@ class FuzzyNgramMatcher:
                         best_intent_name = intent_name
                         best_score = intent_score
                         best_slots = slot_values
+                        best_name_domain = name_domain
+                        # TODO
                         # print(best_score, best_intent_name, best_slots)
 
         if not best_intent_name:
@@ -226,17 +251,14 @@ class FuzzyNgramMatcher:
             intent_name=best_intent_name,
             slots=(
                 {
-                    slot_name: (
-                        slot_value.value
-                        if isinstance(slot_value, SpanSlotValue)
-                        else slot_value
-                    )
-                    for slot_name, slot_value in best_slots.items()
+                    slot_name: FuzzySlotValue(value=slot_value, text=slot_text)
+                    for slot_name, (slot_value, slot_text) in best_slots.items()
                 }
                 if best_slots is not None
                 else {}
             ),
             score=best_score,
+            name_domain=best_name_domain,
         )
 
     # -------------------------------------------------------------------------
@@ -269,7 +291,10 @@ class FuzzyNgramMatcher:
         cache[pos] = interpretations
         return interpretations
 
-    def _build_trie(self) -> Trie:
+    def _build_trie(self, slot_lists: Optional[Dict[str, SlotList]] = None) -> Trie:
+        if slot_lists is None:
+            slot_lists = {}
+
         trie = Trie()
 
         number_engine: Optional[RbnfEngine] = None
@@ -282,7 +307,9 @@ class FuzzyNgramMatcher:
         number_cache: Dict[Union[int, float], str] = {}
         span_values: Dict[str, SpanValue] = {}
 
-        for list_name, slot_list in self.intents.slot_lists.items():
+        for list_name, slot_list in itertools.chain(
+            self.intents.slot_lists.items(), slot_lists.items()
+        ):
             slot_names = self.intent_slot_list_names.get(list_name)
             if not slot_names:
                 continue
@@ -356,119 +383,3 @@ class FuzzyNgramMatcher:
                 span_value.inferred_domain = domain
 
         return trie
-
-    def _load_models(self) -> Dict[str, NgramModel]:
-        models: Dict[str, NgramModel] = {}
-
-        for intent_name in self.intents.intents:
-            intent_arpa_path = self.arpa_dir / f"{intent_name}.arpa"
-            if not intent_arpa_path.exists():
-                continue
-
-            with open(intent_arpa_path, "r", encoding="utf-8") as intent_arpa_file:
-                models[intent_name] = load_arpa(intent_arpa_file)
-
-        return models
-
-
-# -----------------------------------------------------------------------------
-
-
-def load_arpa(arpa_file: TextIO) -> NgramModel:
-    """Load APRA n-gram file."""
-    model = NgramModel(order=0)
-    order = 0
-    reading_ngrams = False
-
-    for line in arpa_file:
-        line = line.strip()
-
-        # Start of new section
-        if line.startswith("\\") and "-grams:" in line:
-            order = int(line.strip("\\-grams:"))
-            model.order = max(order, model.order)
-            reading_ngrams = True
-            continue
-
-        if line.startswith("\\end\\"):
-            break
-
-        if (not line) or line.startswith("ngram") or (not reading_ngrams):
-            continue
-
-        parts = line.split()
-        if len(parts) < order + 1:
-            continue  # malformed line
-
-        log_prob = float(parts[0])
-        ngram = tuple(parts[1 : 1 + order])
-        backoff = float(parts[1 + order]) if len(parts) > 1 + order else None
-
-        model.probs[ngram] = (log_prob, backoff)
-
-    return model
-
-
-def get_log_prob_cached(
-    tokens: Iterable[str],
-    model: NgramModel,
-    unk_log_prob: float = -15.0,
-    min_log_prob: Optional[float] = None,
-    cache: Optional[Dict[Tuple[str, ...], float]] = None,
-) -> float:
-    """Get log probability of token sequence relative to an n-gram model."""
-    if cache is None:
-        cache = {}
-
-    total_log_prob = 0.0
-    context: List[str] = []
-
-    for word in tokens:
-        if word == BOS:
-            # Skip BOS since its not a normal token
-            context.append(word)
-            continue
-
-        context_key = tuple(context + [word])
-
-        # Check external prefix cache
-        if context_key in cache:
-            total_log_prob = cache[context_key]
-            if (min_log_prob is not None) and (total_log_prob < min_log_prob):
-                # Stop early
-                return -math.inf
-
-            context.append(word)
-            continue
-
-        found = False
-
-        # Try highest to lowest n-gram order
-        for n in reversed(range(1, model.order + 1)):
-            prefix = tuple(context[-(n - 1) :]) if n > 1 else ()
-            ngram = prefix + (word,)
-
-            if ngram in model.probs:
-                total_log_prob += model.probs[ngram][0]
-                found = True
-                break
-
-            if (prefix_info := model.probs.get(prefix)) and (
-                prefix_info[1] is not None
-            ):
-                # backoff
-                total_log_prob += prefix_info[1]
-
-        if not found:
-            total_log_prob += unk_log_prob
-
-        if (min_log_prob is not None) and (total_log_prob < min_log_prob):
-            # Stop early
-            return -math.inf
-
-        context.append(word)
-
-        # Store in external prefix cache
-        cache[context_key] = total_log_prob
-
-    return total_log_prob
