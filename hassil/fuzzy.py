@@ -28,6 +28,7 @@ from .ngram import NgramModel, BOS, EOS
 
 MIN_SCORE: Final = -20.0
 CLOSE_SCORE: Final = 1.0
+MIN_DIFF_SCORE: Final = 0.1
 
 
 @dataclass
@@ -115,6 +116,7 @@ class FuzzyNgramMatcher:
         best_score: Optional[float] = None
         best_slots: Optional[Dict[str, Any]] = None
         best_name_domain: Optional[str] = None
+        best_scores: List[float] = []
 
         logprob_cache = defaultdict(dict)
         for pos_and_values in self._find_interpretations(tokens, span_map):
@@ -157,6 +159,7 @@ class FuzzyNgramMatcher:
             # (token, slot name, slot value) tuples.
             for tokens_and_values in itertools.product(*values):
                 interp_tokens = [BOS]
+                # interp_tokens = []  # TODO
                 slot_names: List[str] = []
                 slot_values: Dict[str, Tuple[Any, str]] = {}
                 name_domain: Optional[str] = None
@@ -202,15 +205,18 @@ class FuzzyNgramMatcher:
 
                 # Score token string for each intent
                 for intent_name in intents_to_check:
-                    intent_ngram_model = self.intent_models[intent_name]
+                    intent_ngram_model = self.intent_models.get(intent_name)
+                    if intent_ngram_model is None:
+                        continue
+
                     intent_score = intent_ngram_model.get_log_prob(
                         interp_tokens, cache=logprob_cache[intent_name]
                     ) / len(tokens)
 
                     # TODO
-                    # print(
-                    #     interp_tokens, combo_key, intent_name, intent_score, slot_values
-                    # )
+                    print(
+                        interp_tokens, combo_key, intent_name, intent_score, slot_values
+                    )
 
                     if (min_score is not None) and (intent_score < min_score):
                         # Below minimum score
@@ -227,11 +233,7 @@ class FuzzyNgramMatcher:
                                 and slot_names
                                 and (
                                     (not best_slots)
-                                    # or (len(slot_values) > len(best_slots))
-                                    # or (
-                                    #     (len(slot_values) == len(best_slots))
-                                    #     and ("name" in slot_values)
-                                    # )
+                                    or (len(slot_values) > len(best_slots))
                                     or ("name" in slot_values)
                                 )
                             )
@@ -241,11 +243,18 @@ class FuzzyNgramMatcher:
                         best_score = intent_score
                         best_slots = slot_values
                         best_name_domain = name_domain
+                        best_scores.append(best_score)
                         # TODO
-                        # print(best_score, best_intent_name, best_slots)
+                        print(best_score, best_intent_name, best_slots)
 
         if not best_intent_name:
             return None
+
+        if len(best_scores) > 1:
+            best_scores = sorted(best_scores, reverse=True)
+            if (best_scores[0] - best_scores[1]) < MIN_DIFF_SCORE:
+                # Not enough difference between top 2 scores indicates uncertainty
+                return None
 
         return FuzzyResult(
             intent_name=best_intent_name,

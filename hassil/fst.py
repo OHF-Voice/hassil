@@ -37,7 +37,7 @@ class SuppressOutput(Enum):
 
 @dataclass
 class ListReferenceNode:
-    list_names: List[str] = field(default_factory=list)
+    list_names: List[Tuple[str, Optional[Set[str]]]] = field(default_factory=list)
     children: "List[ListReferenceNode]" = field(default_factory=list)
 
 
@@ -485,7 +485,7 @@ def expression_to_fst(
             (slot_list is None) and (list_ref.slot_name in ("name", "area", "floor"))
         ):
             list_name = list_ref.slot_name
-            domains = None
+            domains: Optional[Set[str]] = None
             if (list_name == "name") and (intent_data.requires_context is not None):
                 requires_domain = intent_data.requires_context.get("domain")
                 if requires_domain:
@@ -495,6 +495,7 @@ def expression_to_fst(
                     domains = set(requires_domain)
 
             list_ref_node.list_names.append((list_name, domains))
+
             return expression_to_fst(
                 TextChunk(f"{{{list_name}}}"),
                 state,
