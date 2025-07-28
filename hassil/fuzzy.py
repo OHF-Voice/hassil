@@ -103,7 +103,9 @@ class FuzzyNgramMatcher:
         best_score: Optional[float] = None
         best_slots: Optional[Dict[str, Any]] = None
         best_name_domain: Optional[str] = None
-        best_scores: List[float] = []
+
+        # (intent name, score)
+        best_scores: List[Tuple[str, float]] = []
 
         # intent -> prob cache
         logprob_cache: Dict[str, NgramProbCache] = defaultdict(dict)
@@ -211,6 +213,8 @@ class FuzzyNgramMatcher:
                         interp_tokens, cache=logprob_cache[intent_name]
                     ) / len(tokens)
 
+                    # print(intent_score, intent_name, interp_tokens)
+
                     if (min_score is not None) and (intent_score < min_score):
                         # Below minimum score
                         continue
@@ -236,14 +240,22 @@ class FuzzyNgramMatcher:
                         best_score = intent_score
                         best_slots = slot_values
                         best_name_domain = name_domain
-                        best_scores.append(best_score)
+                        best_scores.append((best_intent_name, best_score))
+                        # print("Best:", best_score, best_intent_name, best_slots)
 
         if not best_intent_name:
             return None
 
         if len(best_scores) > 1:
-            best_scores = sorted(best_scores, reverse=True)
-            if (best_scores[0] - best_scores[1]) < MIN_DIFF_SCORE:
+            best_scores = sorted(
+                best_scores, reverse=True, key=lambda intent_score: intent_score[1]
+            )
+            # print(best_scores)
+
+            # Different intents but close scores
+            if (best_scores[0][0] != best_scores[1][0]) and (
+                (best_scores[0][1] - best_scores[1][1]) < MIN_DIFF_SCORE
+            ):
                 # Not enough difference between top 2 scores indicates uncertainty
                 return None
 
