@@ -1,34 +1,21 @@
 """Fuzzy matching using n-grams."""
 
 import itertools
-import math
 from collections import defaultdict
-from collections.abc import Iterable
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import (
-    Any,
-    Collection,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Union,
-    Final,
-)
+from typing import Any, Collection, Dict, Final, List, Optional, Set, Tuple, Union
 
 from unicode_rbnf import RbnfEngine
 
 from .intents import Intents, RangeSlotList, SlotList, TextSlotList
+from .ngram import BOS, EOS, NgramModel, NgramProbCache
 from .sample import sample_expression
 from .trie import Trie
 from .util import normalize_text, remove_punctuation
-from .ngram import NgramModel, BOS, EOS
 
 MIN_SCORE: Final = -20.0
 CLOSE_SCORE: Final = 1.0
-MIN_DIFF_SCORE: Final = 0.1
+MIN_DIFF_SCORE: Final = 0.2
 
 
 @dataclass
@@ -118,15 +105,25 @@ class FuzzyNgramMatcher:
         best_name_domain: Optional[str] = None
         best_scores: List[float] = []
 
-        logprob_cache = defaultdict(dict)
+        # intent -> prob cache
+        logprob_cache: Dict[str, NgramProbCache] = defaultdict(dict)
+
         for pos_and_values in self._find_interpretations(tokens, span_map):
-            values = []
+            # Multiples possible values may exist for each token, each one
+            # representing a different interpretation.
+            #
+            # For example, "garage door" may be an entity {name} or a cover {device_class}.
+            values: List[List[Tuple[Optional[str], Optional[str], Any, str]]] = []
+
             for _start_idx, _end_idx, value in pos_and_values:
                 if isinstance(value, str):
                     values.append([(value, None, None, value)])
                 elif isinstance(value, SpanValue):
                     span_value = value
-                    sub_values = []
+
+                    # (token, slot name, slot value, text)
+                    sub_values: List[Tuple[Optional[str], Optional[str], Any, str]] = []
+
                     if span_value.inferred_domain:
                         # Inferred domain is separate
                         values.append(
@@ -159,7 +156,6 @@ class FuzzyNgramMatcher:
             # (token, slot name, slot value) tuples.
             for tokens_and_values in itertools.product(*values):
                 interp_tokens = [BOS]
-                # interp_tokens = []  # TODO
                 slot_names: List[str] = []
                 slot_values: Dict[str, Tuple[Any, str]] = {}
                 name_domain: Optional[str] = None
@@ -178,7 +174,9 @@ class FuzzyNgramMatcher:
                             slot_values[slot_name] = (slot_value, slot_text)
 
                 combo_key = tuple(sorted(slot_names))
-                intents_to_check = self._slot_combo_intents.get(combo_key)
+                intents_to_check: Optional[Collection[str]] = (
+                    self._slot_combo_intents.get(combo_key)
+                )
                 if not intents_to_check:
                     # Slot combination is not valid for any intent
                     continue
@@ -213,11 +211,6 @@ class FuzzyNgramMatcher:
                         interp_tokens, cache=logprob_cache[intent_name]
                     ) / len(tokens)
 
-                    # TODO
-                    print(
-                        interp_tokens, combo_key, intent_name, intent_score, slot_values
-                    )
-
                     if (min_score is not None) and (intent_score < min_score):
                         # Below minimum score
                         continue
@@ -244,8 +237,6 @@ class FuzzyNgramMatcher:
                         best_slots = slot_values
                         best_name_domain = name_domain
                         best_scores.append(best_score)
-                        # TODO
-                        print(best_score, best_intent_name, best_slots)
 
         if not best_intent_name:
             return None

@@ -5,7 +5,7 @@ from collections import defaultdict, deque
 from collections.abc import Collection
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Dict, List, Optional, Set, TextIO, Tuple
+from typing import Deque, Dict, List, Optional, Set, TextIO, Tuple
 
 from hassil import (
     Alternative,
@@ -453,7 +453,7 @@ def expression_to_fst(
             return expression_to_fst(
                 Alternative(
                     [
-                        Sequence(perm_items)
+                        Sequence(perm_items)  # type: ignore[arg-type]
                         for perm_items in itertools.permutations(grp.items)
                     ]
                 ),
@@ -594,7 +594,9 @@ def intents_to_fst(
 
                 fst_with_spaces.add_edge(state, final, SPACE, SPACE)
 
-                q = deque([(list_ref_node, [])])
+                q: Deque[Tuple[ListReferenceNode, List[str]]] = deque(
+                    [(list_ref_node, [])]
+                )
                 while q:
                     node, slots = q.popleft()
                     if node.list_names:

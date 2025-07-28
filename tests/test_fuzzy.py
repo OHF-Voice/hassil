@@ -1,7 +1,6 @@
 import io
-import json
 import itertools
-import sqlite3
+import json
 from collections import defaultdict
 from pathlib import Path
 
@@ -10,9 +9,9 @@ from yaml import safe_load
 
 from hassil import Intents, TextSlotList
 from hassil.expression import Group
-from hassil.fuzzy import FuzzyNgramMatcher, SlotCombinationInfo, FuzzySlotValue
+from hassil.fuzzy import FuzzyNgramMatcher, FuzzySlotValue, SlotCombinationInfo
 from hassil.intents import WildcardSlotList
-from hassil.ngram import Sqlite3NgramModel, NgramModel
+from hassil.ngram import Sqlite3NgramModel
 
 LISTS_YAML = """
 lists:
@@ -424,15 +423,14 @@ def matcher_fixture() -> FuzzyNgramMatcher:
         intent_models[intent_name] = Sqlite3NgramModel(
             order=db_config_dict["order"],
             words={
-                word: str(word_id)
-                for word, word_id in db_config_dict["words"].items()
+                word: str(word_id) for word, word_id in db_config_dict["words"].items()
             },
             database_path=db_path,
         )
         # ngram_path = db_path.with_suffix(".ngram.json")
         # with open(ngram_path, "r", encoding="utf-8") as db_config_file:
         #     ngram_dict = json.load(db_config_file)
-        #     intent_models[intent_name] = NgramModel(
+        #     intent_models[intent_name] = MemoryNgramModel(
         #         order=ngram_dict["order"],
         #         probs={
         #             tuple(combo_key.split()): combo_probs
