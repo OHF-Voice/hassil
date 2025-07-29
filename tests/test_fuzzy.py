@@ -2,7 +2,9 @@ import io
 import itertools
 import json
 from collections import defaultdict
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Dict, List, Set, Tuple
 
 import pytest
 from yaml import safe_load
@@ -329,7 +331,9 @@ def matcher_fixture() -> FuzzyNgramMatcher:
         intents_info = safe_load(f)
 
     intent_slot_names = set()
-    slot_combinations = defaultdict(lambda: defaultdict(list))
+    slot_combinations: Dict[str, Dict[Tuple[str, ...], List[SlotCombinationInfo]]] = (
+        defaultdict(lambda: defaultdict(list))
+    )
     for intent_name, intent_info in intents_info.items():
         intent_slot_names.update(intent_info.get("slots", {}).keys())
 
@@ -376,7 +380,7 @@ def matcher_fixture() -> FuzzyNgramMatcher:
     #     ["kitchen", "living room", "office"]
     # )
 
-    intent_slot_list_names = defaultdict(set)
+    intent_slot_list_names: Mapping[str, Set[str]] = defaultdict(set)
     for intent_info in intents.intents.values():
         for intent_data in intent_info.data:
             if intent_data.expansion_rules:
@@ -438,24 +442,20 @@ def matcher_fixture() -> FuzzyNgramMatcher:
         #         },
         #     )
 
+    with open(
+        "/home/hansenm/opt/intents-package/home_assistant_intents/fuzzy/en/config.json",
+        "r",
+        encoding="utf-8",
+    ) as config_file:
+        lang_config = json.load(config_file)
+
     matcher = FuzzyNgramMatcher(
         intents,
         intent_models,
         intent_slot_list_names,
         slot_combinations,
-        domain_keywords={
-            "light": ["light", "lights"],
-            "fan": ["fan", "fans"],
-            "cover": [
-                "window",
-                "windows",
-                "curtain",
-                "curtains",
-                "door",
-                "doors",
-                "garage door",
-            ],
-        },
+        domain_keywords=lang_config["domain_keywords"],
+        stop_words=lang_config.get("stop_words"),
     )
 
     return matcher
@@ -669,3 +669,13 @@ def test_wrong_vocab(matcher: FuzzyNgramMatcher) -> None:
     assert result.slots.keys() == {"device_class", "domain"}
     assert result.slots["device_class"] == FuzzySlotValue(value="door", text="door")
     assert result.slots["domain"] == FuzzySlotValue(value="cover", text="door")
+
+
+def test_stop_words(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match(
+        "hi there, so pls could you turn the A.C. off just now lol ok"
+    )
+    assert result is not None
+    assert result.intent_name == "HassTurnOff"
+    assert result.slots.keys() == {"name"}
+    assert result.slots["name"] == FuzzySlotValue(value="A.C.", text="A.C.")

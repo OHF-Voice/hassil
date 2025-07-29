@@ -3,13 +3,14 @@
 import itertools
 import math
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Collection, Dict, Final, List, Optional, Set, Tuple, Union
 
 from unicode_rbnf import RbnfEngine
 
 from .intents import Intents, RangeSlotList, SlotList, TextSlotList
-from .ngram import BOS, EOS, UNK_LOG_PROB, NgramModel, NgramProbCache, Sqlite3NgramModel
+from .ngram import BOS, EOS, UNK_LOG_PROB, NgramProbCache, Sqlite3NgramModel
 from .sample import sample_expression
 from .trie import Trie
 from .util import normalize_text, remove_punctuation
@@ -19,6 +20,7 @@ CLOSE_SCORE: Final = 1.0
 EQUAL_SCORE: Final = 0.1
 MIN_DIFF_SCORE: Final = 0.2
 UNK_LOG_PROB_SCALE: Final = -20
+STOP_WORD_LOG_PROB: Final = -10
 SKIP: Final = "<skip>"
 
 
@@ -64,9 +66,10 @@ class FuzzyNgramMatcher:
         self,
         intents: Intents,
         intent_models: Dict[str, Sqlite3NgramModel],
-        intent_slot_list_names: Dict[str, Collection[str]],
+        intent_slot_list_names: Mapping[str, Collection[str]],
         slot_combinations: Dict[str, Dict[Tuple[str, ...], List[SlotCombinationInfo]]],
         domain_keywords: Dict[str, Collection[str]],
+        stop_words: Optional[Collection[str]] = None,
         slot_lists: Optional[Dict[str, SlotList]] = None,
     ) -> None:
         self.intents = intents
@@ -74,6 +77,7 @@ class FuzzyNgramMatcher:
         self.intent_slot_list_names = intent_slot_list_names
         self.slot_combinations = slot_combinations
         self.domain_keywords = domain_keywords
+        self.stop_words = set(stop_words or [])
 
         self._slot_combo_intents: Dict[Tuple[str, ...], Set[str]] = defaultdict(set)
         for intent_name, intent_combos in self.slot_combinations.items():
@@ -136,6 +140,9 @@ class FuzzyNgramMatcher:
                 else:
                     scale = 1 - (math.exp(best_prob))
                     word_prob = UNK_LOG_PROB + (scale * UNK_LOG_PROB_SCALE)
+
+                if word in self.stop_words:
+                    word_prob = max(word_prob, STOP_WORD_LOG_PROB)
 
                 unk_logprob_cache[word] = word_prob
 
@@ -272,29 +279,43 @@ class FuzzyNgramMatcher:
                         cache=logprob_cache[model_name],
                     ) / len(tokens)
 
-                    print(intent_score, intent_domain, intent_name, interp_tokens)
-
                     if (min_score is not None) and (intent_score < min_score):
                         # Below minimum score
+                        continue
+
+                    if (
+                        (best_score is not None)
+                        and (intent_score <= best_score)
+                        and (equal_score is not None)
+                        and (abs(best_score - intent_score) <= EQUAL_SCORE)
+                    ):
+                        # Keep for uncertainty check below
+                        best_scores.append((intent_name, intent_score))
                         continue
 
                     if (
                         (best_score is None)
                         or (intent_score > best_score)
                         or (
-                            (equal_score is not None)
-                            and (abs(best_score - intent_score) <= EQUAL_SCORE)
-                        )
-                        or (
                             (close_score is not None)
-                            # prefer more slots matched and "name" slots
                             and (
+                                # prefer more slots matched and "name" slots
                                 (abs(intent_score - best_score) < close_score)
-                                and slot_names
                                 and (
-                                    (not best_slots)
-                                    or (len(slot_values) > len(best_slots))
-                                    or ("name" in slot_values)
+                                    ((not best_slots) and slot_values)
+                                    or (
+                                        best_slots
+                                        and (
+                                            (len(slot_values) > len(best_slots))
+                                            or (
+                                                ("name" in slot_values)
+                                                and (
+                                                    "name"
+                                                    not in best_slots  # pylint: disable=unsupported-membership-test
+                                                )
+                                            )
+                                        )
+                                    )
                                 )
                             )
                         )
@@ -304,15 +325,6 @@ class FuzzyNgramMatcher:
                         best_slots = slot_values
                         best_name_domain = name_domain
                         best_scores.append((best_intent_name, best_score))
-                        print(
-                            "Best:",
-                            best_score,
-                            intent_domain,
-                            best_intent_name,
-                            best_name_domain,
-                            best_slots,
-                            model_domain,
-                        )
 
         if not best_intent_name:
             return None
