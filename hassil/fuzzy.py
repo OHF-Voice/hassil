@@ -1,6 +1,7 @@
 """Fuzzy matching using n-grams."""
 
 import itertools
+import math
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Collection, Dict, Final, List, Optional, Set, Tuple, Union
@@ -8,14 +9,17 @@ from typing import Any, Collection, Dict, Final, List, Optional, Set, Tuple, Uni
 from unicode_rbnf import RbnfEngine
 
 from .intents import Intents, RangeSlotList, SlotList, TextSlotList
-from .ngram import BOS, EOS, NgramModel, NgramProbCache
+from .ngram import BOS, EOS, UNK_LOG_PROB, NgramModel, NgramProbCache, Sqlite3NgramModel
 from .sample import sample_expression
 from .trie import Trie
 from .util import normalize_text, remove_punctuation
 
-MIN_SCORE: Final = -20.0
+MIN_SCORE: Final = -15.0
 CLOSE_SCORE: Final = 1.0
+EQUAL_SCORE: Final = 0.1
 MIN_DIFF_SCORE: Final = 0.2
+UNK_LOG_PROB_SCALE: Final = -20
+SKIP: Final = "<skip>"
 
 
 @dataclass
@@ -59,7 +63,7 @@ class FuzzyNgramMatcher:
     def __init__(
         self,
         intents: Intents,
-        intent_models: Dict[str, NgramModel],
+        intent_models: Dict[str, Sqlite3NgramModel],
         intent_slot_list_names: Dict[str, Collection[str]],
         slot_combinations: Dict[str, Dict[Tuple[str, ...], List[SlotCombinationInfo]]],
         domain_keywords: Dict[str, Collection[str]],
@@ -83,6 +87,7 @@ class FuzzyNgramMatcher:
         text: str,
         min_score: Optional[float] = MIN_SCORE,
         close_score: Optional[float] = CLOSE_SCORE,
+        equal_score: Optional[float] = EQUAL_SCORE,
     ):
         text_norm = remove_punctuation(normalize_text(text)).lower()
 
@@ -109,6 +114,32 @@ class FuzzyNgramMatcher:
 
         # intent -> prob cache
         logprob_cache: Dict[str, NgramProbCache] = defaultdict(dict)
+
+        unk_logprob_cache: Dict[str, float] = {}
+
+        def unk_log_prob(word: str) -> float:
+            word_prob = unk_logprob_cache.get(word)
+            if word_prob is None:
+                best_prob = None
+                for intent_ngram_model in self.intent_models.values():
+                    if word not in intent_ngram_model.words:
+                        continue
+
+                    model_word_prob = intent_ngram_model.get_log_prob([word])
+                    if best_prob is None:
+                        best_prob = model_word_prob
+                    else:
+                        best_prob = max(best_prob, model_word_prob)
+
+                if best_prob is None:
+                    word_prob = UNK_LOG_PROB
+                else:
+                    scale = 1 - (math.exp(best_prob))
+                    word_prob = UNK_LOG_PROB + (scale * UNK_LOG_PROB_SCALE)
+
+                unk_logprob_cache[word] = word_prob
+
+            return word_prob
 
         for pos_and_values in self._find_interpretations(tokens, span_map):
             # Multiples possible values may exist for each token, each one
@@ -163,7 +194,11 @@ class FuzzyNgramMatcher:
                 name_domain: Optional[str] = None
                 for token, slot_name, slot_value, slot_text in tokens_and_values:
                     if token:
-                        interp_tokens.append(token)
+                        if interp_tokens and (
+                            (token != SKIP) or (interp_tokens[-1] != SKIP)
+                        ):
+                            # Combine multiple "<skip>"
+                            interp_tokens.append(token)
 
                     if slot_name:
                         slot_names.append(slot_name)
@@ -201,19 +236,43 @@ class FuzzyNgramMatcher:
                     # Not a valid slot combination
                     continue
 
+                if (len(interp_tokens) == 2) and (interp_tokens[1] == "{name}"):
+                    # Don't try to interpret entity names only
+                    continue
+
                 interp_tokens.append(EOS)
 
+                model_domain = name_domain
+                if (not model_domain) and (
+                    domain_slot_value := slot_values.get("domain")
+                ):
+                    model_domain = domain_slot_value[0]
+
                 # Score token string for each intent
-                for intent_name in intents_to_check:
-                    intent_ngram_model = self.intent_models.get(intent_name)
-                    if intent_ngram_model is None:
+                intent_models_to_check = [
+                    (model_name, model)
+                    for intent_name in intents_to_check
+                    for model_name, model in self.intent_models.items()
+                    if model_name.endswith(f"_{intent_name}")
+                ]
+
+                for model_name, intent_ngram_model in intent_models_to_check:
+                    intent_domain, intent_name = model_name.rsplit("_", maxsplit=1)
+                    if (
+                        model_domain
+                        and (model_domain != intent_domain)
+                        and (f"{model_domain}_{intent_name}" in self.intent_models)
+                    ):
+                        # Skip if a domain-specific model exists
                         continue
 
                     intent_score = intent_ngram_model.get_log_prob(
-                        interp_tokens, cache=logprob_cache[intent_name]
+                        interp_tokens,
+                        unk_log_prob=unk_log_prob,
+                        cache=logprob_cache[model_name],
                     ) / len(tokens)
 
-                    # print(intent_score, intent_name, interp_tokens)
+                    print(intent_score, intent_domain, intent_name, interp_tokens)
 
                     if (min_score is not None) and (intent_score < min_score):
                         # Below minimum score
@@ -222,6 +281,10 @@ class FuzzyNgramMatcher:
                     if (
                         (best_score is None)
                         or (intent_score > best_score)
+                        or (
+                            (equal_score is not None)
+                            and (abs(best_score - intent_score) <= EQUAL_SCORE)
+                        )
                         or (
                             (close_score is not None)
                             # prefer more slots matched and "name" slots
@@ -241,23 +304,26 @@ class FuzzyNgramMatcher:
                         best_slots = slot_values
                         best_name_domain = name_domain
                         best_scores.append((best_intent_name, best_score))
-                        # print("Best:", best_score, best_intent_name, best_slots)
+                        print(
+                            "Best:",
+                            best_score,
+                            intent_domain,
+                            best_intent_name,
+                            best_name_domain,
+                            best_slots,
+                            model_domain,
+                        )
 
         if not best_intent_name:
             return None
 
-        if len(best_scores) > 1:
-            best_scores = sorted(
-                best_scores, reverse=True, key=lambda intent_score: intent_score[1]
-            )
-            # print(best_scores)
+        if (best_score is not None) and (len(best_scores) > 1):
+            for other_intent_name, other_score in best_scores:
+                if best_intent_name == other_intent_name:
+                    continue
 
-            # Different intents but close scores
-            if (best_scores[0][0] != best_scores[1][0]) and (
-                (best_scores[0][1] - best_scores[1][1]) < MIN_DIFF_SCORE
-            ):
-                # Not enough difference between top 2 scores indicates uncertainty
-                return None
+                if abs(other_score - best_score) < MIN_DIFF_SCORE:
+                    return None
 
         return FuzzyResult(
             intent_name=best_intent_name,

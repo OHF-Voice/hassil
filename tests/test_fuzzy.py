@@ -583,7 +583,7 @@ def test_weather(matcher: FuzzyNgramMatcher) -> None:
 
 
 def test_weather_name(matcher: FuzzyNgramMatcher) -> None:
-    result = matcher.match("demo weather south")
+    result = matcher.match("how about demo weather south")
     assert result is not None
     assert result.intent_name == "HassGetWeather"
     assert result.slots.keys() == {"name"}
@@ -635,7 +635,7 @@ def test_set_position(matcher: FuzzyNgramMatcher) -> None:
 
 
 def test_degrees(matcher: FuzzyNgramMatcher) -> None:
-    result = matcher.match("72°")
+    result = matcher.match("set 72°")
     assert result is not None
     assert result.intent_name == "HassClimateSetTemperature"
     assert result.slots.keys() == {"temperature"}
@@ -643,7 +643,7 @@ def test_degrees(matcher: FuzzyNgramMatcher) -> None:
 
 
 def test_nevermind(matcher: FuzzyNgramMatcher) -> None:
-    result = matcher.match("nevermind, it's working")
+    result = matcher.match("oh nevermind")
     assert result is not None
     assert result.intent_name == "HassNevermind"
     assert not result.slots.keys()
@@ -656,3 +656,16 @@ def test_scene(matcher: FuzzyNgramMatcher) -> None:
     assert result.slots.keys() == {"name"}
     assert result.slots["name"] == FuzzySlotValue(value="party time", text="party time")
     assert result.name_domain == "scene"
+
+
+def test_wrong_vocab(matcher: FuzzyNgramMatcher) -> None:
+    assert not matcher.match("open office lights")
+    assert not matcher.match("close A.C.")
+    assert not matcher.match("garage door off")
+
+    result = matcher.match("close front door")
+    assert result is not None
+    assert result.intent_name == "HassTurnOff"
+    assert result.slots.keys() == {"device_class", "domain"}
+    assert result.slots["device_class"] == FuzzySlotValue(value="door", text="door")
+    assert result.slots["domain"] == FuzzySlotValue(value="cover", text="door")
