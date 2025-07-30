@@ -12,13 +12,16 @@ WHITESPACE_SEPARATOR = " "
 
 TEMPLATE_SYNTAX = re.compile(r".*[(){}<>\[\]|].*")
 
-PUNCTUATION_STR = ".。,，?¿？؟!¡！;；:：’"
+PUNCTUATION_STR_NO_PERIOD = "。,，?¿？؟!¡！;；:：’"
+PUNCTUATION_PATTERN_NO_PERIOD = rf"[{re.escape(PUNCTUATION_STR_NO_PERIOD)}]+"
+PUNCTUATION_STR = f".{PUNCTUATION_STR_NO_PERIOD}"
 PUNCTUATION_PATTERN = rf"[{re.escape(PUNCTUATION_STR)}]+"
 PUNCTUATION_START = re.compile(rf"^{PUNCTUATION_PATTERN}")
 PUNCTUATION_END = re.compile(rf"{PUNCTUATION_PATTERN}$")
 PUNCTUATION_END_SPACE = re.compile(rf"{PUNCTUATION_PATTERN}\s*$")
 PUNCTUATION_START_WORD = re.compile(rf"(?<=\W){PUNCTUATION_PATTERN}(?=\w)")
-PUNCTUATION_END_WORD = re.compile(rf"(?<=\w){PUNCTUATION_PATTERN}(?=\W)")
+PUNCTUATION_END_WORD = re.compile(rf"(?<=\w){PUNCTUATION_PATTERN_NO_PERIOD}(?=\W)")
+PUNCTUATION_END_PERIOD = re.compile(r"(?<!\w\.\w)\.(?=\W)")  # ignore initialisms
 PUNCTUATION_WORD = re.compile(rf"(?<=\W){PUNCTUATION_PATTERN}(?=\W)")
 
 INITIALISM_DOTS_AT_END = re.compile(r"\b(?:\w\.){2,}$")
@@ -202,6 +205,7 @@ def remove_punctuation(text: str) -> str:
 
     text = PUNCTUATION_START_WORD.sub("", text)
     text = PUNCTUATION_END_WORD.sub("", text)
+    text = PUNCTUATION_END_PERIOD.sub("", text)
     text = PUNCTUATION_WORD.sub("", text)
 
     return text

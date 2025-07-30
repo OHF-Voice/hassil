@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.0
+
+- Add fuzzy n-gram matcher (beta)
+- Add word boundary option to trie
+
 ## 3.0.1
 
 - Use faster permutation iteration

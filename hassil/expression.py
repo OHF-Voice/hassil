@@ -59,31 +59,39 @@ class Group(Expression):
 
         return num_text_chunks
 
+    def list_references(
+        self,
+        expansion_rules: Optional[Dict[str, Sentence]] = None,
+    ) -> Iterator[ListReference]:
+        """Return names of list references (recursive)."""
+        for item in self.items:
+            yield from self._list_refs(item, expansion_rules)
+
     def list_names(
         self,
         expansion_rules: Optional[Dict[str, Sentence]] = None,
     ) -> Iterator[str]:
         """Return names of list references (recursive)."""
-        for item in self.items:
-            yield from self._list_names(item, expansion_rules)
+        for list_ref in self.list_references(expansion_rules):
+            yield list_ref.list_name
 
-    def _list_names(
+    def _list_refs(
         self,
         item: Expression,
         expansion_rules: Optional[Dict[str, Sentence]] = None,
-    ) -> Iterator[str]:
+    ) -> Iterator[ListReference]:
         """Return names of list references (recursive)."""
         if isinstance(item, ListReference):
             list_ref: ListReference = item
-            yield list_ref.list_name
+            yield list_ref
         elif isinstance(item, Group):
             grp: Group = item
-            yield from grp.list_names(expansion_rules)
+            yield from grp.list_references(expansion_rules)
         elif isinstance(item, RuleReference):
             rule_ref: RuleReference = item
             if expansion_rules and (rule_ref.rule_name in expansion_rules):
                 rule_body = expansion_rules[rule_ref.rule_name].expression
-                yield from self._list_names(rule_body, expansion_rules)
+                yield from self._list_refs(rule_body, expansion_rules)
 
 
 @dataclass

@@ -3,9 +3,9 @@
 See: https://en.wikipedia.org/wiki/Trie
 """
 
-from collections import deque
+import unicodedata
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 
 @dataclass
@@ -50,38 +50,71 @@ class Trie:
 
             current_children = current_node.children
 
-    def find(self, text: str, unique: bool = True) -> Iterable[Tuple[int, str, Any]]:
+    def find(
+        self, text: str, unique: bool = True, word_boundaries: bool = False
+    ) -> Iterable[Tuple[int, str, Any]]:
         """Yield (end_pos, text, value) pairs of all words found in the string."""
-        q = deque([(self.roots, i) for i in range(len(text))])
-        visited = set()
+        visited: Set[int] = set()
 
-        while q:
-            item = q.popleft()
-            current_children, current_position = item
-            if current_position >= len(text):
+        for i in range(len(text)):
+            if word_boundaries and (not _is_word_boundary(text, i)):
                 continue
 
-            current_char = text[current_position]
+            current_children = self.roots
+            current_position = i
 
-            node = current_children.get(current_char)
-            if (node is not None) and (node.id not in visited):
+            while current_position < len(text):
+                current_char = text[current_position]
+                node = current_children.get(current_char)
+                if node is None:
+                    break
 
-                if node.text is not None:
-                    # End is one past the current position
+                match_end = current_position + 1
+
+                if (
+                    (node.text is not None)
+                    and ((not word_boundaries) or _is_end_boundary(text, match_end))
+                    and ((not unique) or (node.id not in visited))
+                ):
                     if unique:
                         visited.add(node.id)
 
-                    if node.values:
-                        for value in node.values:
-                            yield (current_position + 1, node.text, value)
-                    else:
-                        # null value
-                        yield (current_position + 1, node.text, None)
+                    for value in node.values or [None]:
+                        yield (match_end, node.text, value)
 
-                if node.children and (current_position < len(text)):
-                    q.append((node.children, current_position + 1))
+                current_children = node.children or {}
+                current_position += 1
 
     def next_id(self) -> int:
         current_id = self._next_id
         self._next_id += 1
         return current_id
+
+
+def _is_boundary_category(text: str) -> bool:
+    """Return True if text Unicode category is a word boundary."""
+    text_category = unicodedata.category(text)
+    if not text_category:
+        return False
+
+    # punctuation
+    return text_category[0] == "P"
+
+
+def _is_word_boundary(text: str, index: int) -> bool:
+    """Return True if the character at `index` is at a valid word boundary."""
+    if index == 0:
+        # Start of text
+        return True
+
+    prev = text[index - 1]
+    return prev.isspace() or _is_boundary_category(prev)
+
+
+def _is_end_boundary(text: str, index: int) -> bool:
+    """Return True if the character at `index` is at a valid end word boundary."""
+    return (
+        (index == len(text))  # end of text
+        or text[index].isspace()
+        or _is_boundary_category(text[index])
+    )

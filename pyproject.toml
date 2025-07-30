@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name        = "hassil"
-version     = "3.0.1"
+version     = "3.1.0"
 license     = {text = "Apache-2.0"}
 description = "The Home Assistant Intent Language parser"
 readme      = "README.md"
@@ -27,6 +27,18 @@ requires-python = ">=3.9.0"
 dependencies = [
     "PyYAML>=6.0,<7",
     "unicode-rbnf>=2.3,<3"
+]
+
+[project.optional-dependencies]
+dev = [
+    "black==24.8.0",
+    "flake8==7.2.0",
+    "mypy==1.14.0",
+    "pylint==3.2.7",
+    "pytest==8.3.5",
+    "tox==4.26.0",
+    "build==1.2.2",
+    "home-assistant-intents==2025.7.30",
 ]
 
 [project.urls]

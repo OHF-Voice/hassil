@@ -22,6 +22,7 @@ from .intents import (
     SlotList,
     TextSlotList,
     TextSlotValue,
+    WildcardSlotList,
 )
 from .parse_expression import parse_sentence
 from .recognize import (
@@ -78,4 +79,5 @@ __all__ = [
     "TextSlotValue",
     "Trie",
     "TrieNode",
+    "WildcardSlotList",
 ]
