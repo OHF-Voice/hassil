@@ -235,6 +235,13 @@ def test_scene(matcher: FuzzyNgramMatcher) -> None:
     assert result.name_domain == "scene"
 
 
+def test_timer_status(matcher: FuzzyNgramMatcher) -> None:
+    result = matcher.match("how about my timers")
+    assert result is not None
+    assert result.intent_name == "HassTimerStatus"
+    assert not result.slots
+
+
 def test_wrong_vocab(matcher: FuzzyNgramMatcher) -> None:
     assert not matcher.match("open office lights")
     assert not matcher.match("close A.C.")
