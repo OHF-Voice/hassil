@@ -1,0 +1,306 @@
+---
+language: "en"
+lists:
+  name:
+    values:
+      - in: "Front Door"
+        out: "Front Door"
+        context:
+          domain: "lock"
+        metadata:
+          domain: "lock"
+      - in: "Kitchen Door"
+        out: "Kitchen Door"
+        context:
+          domain: "lock"
+        metadata:
+          domain: "lock"
+      - in: "Poorly Installed Door"
+        out: "Poorly Installed Door"
+        context:
+          domain: "lock"
+        metadata:
+          domain: "lock"
+      - in: "Openable Lock"
+        out: "Openable Lock"
+        context:
+          domain: "lock"
+        metadata:
+          domain: "lock"
+      - in: "Humidifier"
+        out: "Humidifier"
+        context:
+          domain: "humidifier"
+        metadata:
+          domain: "humidifier"
+      - in: "Dehumidifier"
+        out: "Dehumidifier"
+        context:
+          domain: "humidifier"
+        metadata:
+          domain: "humidifier"
+      - in: "Hygrostat"
+        out: "Hygrostat"
+        context:
+          domain: "humidifier"
+        metadata:
+          domain: "humidifier"
+      - in: "Demo Water Heater"
+        out: "Demo Water Heater"
+        context:
+          domain: "water_heater"
+        metadata:
+          domain: "water_heater"
+      - in: "Demo Water Heater Celsius"
+        out: "Demo Water Heater Celsius"
+        context:
+          domain: "water_heater"
+        metadata:
+          domain: "water_heater"
+      - in: "Pergola Roof"
+        out: "Pergola Roof"
+        context:
+          domain: "cover"
+          cover_supports_position: false
+        metadata:
+          domain: "cover"
+      - in: "Heat pump"
+        out: "Heat pump"
+        context:
+          domain: "climate"
+        metadata:
+          domain: "climate"
+      - in: "Hvac"
+        out: "Hvac"
+        context:
+          domain: "climate"
+        metadata:
+          domain: "climate"
+      - in: "Ecobee"
+        out: "Ecobee"
+        context:
+          domain: "climate"
+        metadata:
+          domain: "climate"
+      - in: "Overhead light"
+        out: "Overhead light"
+        context:
+          domain: "light"
+          light_supports_color: true
+          light_supports_brightness: true
+        metadata:
+          domain: "light"
+      - in: "Bedroom Light"
+        out: "Bedroom Light"
+        context:
+          domain: "light"
+          light_supports_color: true
+          light_supports_brightness: true
+        metadata:
+          domain: "light"
+      - in: "Kitchen Lights"
+        out: "Kitchen Lights"
+        context:
+          domain: "light"
+          light_supports_color: true
+          light_supports_brightness: true
+        metadata:
+          domain: "light"
+      - in: "Office Light"
+        out: "Office Light"
+        context:
+          domain: "light"
+          light_supports_color: true
+          light_supports_brightness: true
+        metadata:
+          domain: "light"
+      - in: "Living Room Lights"
+        out: "Living Room Lights"
+        context:
+          domain: "light"
+          light_supports_color: true
+          light_supports_brightness: true
+        metadata:
+          domain: "light"
+      - in: "Entrance Color + White Lights"
+        out: "Entrance Color + White Lights"
+        context:
+          domain: "light"
+          light_supports_color: true
+          light_supports_brightness: true
+        metadata:
+          domain: "light"
+      - in: "Outside Temperature"
+        out: "Outside Temperature"
+        context:
+          domain: "sensor"
+        metadata:
+          domain: "sensor"
+      - in: "Outside Humidity"
+        out: "Outside Humidity"
+        context:
+          domain: "sensor"
+        metadata:
+          domain: "sensor"
+      - in: "Kitchen Window"
+        out: "Kitchen Window"
+        context:
+          domain: "cover"
+          cover_supports_position: false
+        metadata:
+          domain: "cover"
+      - in: "Hall Window"
+        out: "Hall Window"
+        context:
+          domain: "cover"
+          cover_supports_position: true
+        metadata:
+          domain: "cover"
+      - in: "Living Room Window"
+        out: "Living Room Window"
+        context:
+          domain: "cover"
+          cover_supports_position: true
+        metadata:
+          domain: "cover"
+      - in: "Garage Door"
+        out: "Garage Door"
+        context:
+          domain: "cover"
+          cover_supports_position: false
+        metadata:
+          domain: "cover"
+      - in: "Living Room Fan"
+        out: "Living Room Fan"
+        context:
+          domain: "fan"
+          fan_supports_speed: true
+        metadata:
+          domain: "fan"
+      - in: "Ceiling Fan"
+        out: "Ceiling Fan"
+        context:
+          domain: "fan"
+          fan_supports_speed: true
+        metadata:
+          domain: "fan"
+      - in: "Percentage Full Fan"
+        out: "Percentage Full Fan"
+        context:
+          domain: "fan"
+          fan_supports_speed: true
+        metadata:
+          domain: "fan"
+      - in: "Percentage Limited Fan"
+        out: "Percentage Limited Fan"
+        context:
+          domain: "fan"
+          fan_supports_speed: true
+        metadata:
+          domain: "fan"
+      - in: "Preset Only Limited Fan"
+        out: "Preset Only Limited Fan"
+        context:
+          domain: "fan"
+          fan_supports_speed: false
+        metadata:
+          domain: "fan"
+      - in: "Decorative Lights"
+        out: "Decorative Lights"
+        context:
+          domain: "switch"
+        metadata:
+          domain: "switch"
+      - in: "A.C."
+        out: "A.C."
+        context:
+          domain: "switch"
+        metadata:
+          domain: "switch"
+      - in: "Search"
+        out: "Search"
+        context:
+          domain: "media_player"
+          media_player_supports_pause: false
+          media_player_supports_volume_set: false
+          media_player_supports_next_track: false
+        metadata:
+          domain: "media_player"
+      - in: "Leaving the house"
+        out: "Leaving the house"
+        context:
+          domain: "script"
+        metadata:
+          domain: "script"
+      - in: "Shopping List"
+        out: "Shopping List"
+        context:
+          domain: "todo"
+        metadata:
+          domain: "todo"
+      - in: "Downstairs Chromecast"
+        out: "Downstairs Chromecast"
+        context:
+          domain: "media_player"
+          media_player_supports_pause: true
+          media_player_supports_volume_set: false
+          media_player_supports_next_track: false
+        metadata:
+          domain: "media_player"
+      - in: "Demo Weather South"
+        out: "Demo Weather South"
+        context:
+          domain: "weather"
+        metadata:
+          domain: "weather"
+      - in: "Liste des courses"
+        out: "Liste des courses"
+        context:
+          domain: "todo"
+        metadata:
+          domain: "todo"
+      - in: "Todo List 1"
+        out: "Todo List 1"
+        context:
+          domain: "todo"
+        metadata:
+          domain: "todo"
+      - in: "party time"
+        out: "party time"
+        context:
+          domain: "scene"
+        metadata:
+          domain: "scene"
+      - in: "TV"
+        out: "Family Room Google TV"
+        context:
+          domain: "media_player"
+          media_player_supports_pause: true
+          media_player_supports_volume_set: false
+          media_player_supports_next_track: false
+        metadata:
+          domain: "media_player"
+      - in: "Media Player"
+        out: "Media Player"
+        context:
+          domain: "media_player"
+          media_player_supports_pause: true
+          media_player_supports_volume_set: true
+          media_player_supports_next_track: false
+        metadata:
+          domain: "media_player"
+  area:
+    values:
+      - "Living Room"
+      - "Kitchen"
+      - "cuisine"
+      - "Bedroom"
+      - "Garage"
+      - "Entrance"
+      - "Office"
+      - "kontoret"
+      - "Basement"
+      - "Test Area"
+  floor:
+    values:
+      - "First floor"

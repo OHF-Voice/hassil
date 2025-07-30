@@ -3,7 +3,7 @@
 import itertools
 import math
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Collection, Dict, Final, List, Optional, Set, Tuple, Union
 
@@ -67,8 +67,10 @@ class FuzzyNgramMatcher:
         intents: Intents,
         intent_models: Dict[str, Sqlite3NgramModel],
         intent_slot_list_names: Mapping[str, Collection[str]],
-        slot_combinations: Dict[str, Dict[Tuple[str, ...], List[SlotCombinationInfo]]],
-        domain_keywords: Dict[str, Collection[str]],
+        slot_combinations: Mapping[
+            str, Mapping[Tuple[str, ...], Sequence[SlotCombinationInfo]]
+        ],
+        domain_keywords: Mapping[str, Collection[str]],
         stop_words: Optional[Collection[str]] = None,
         slot_lists: Optional[Dict[str, SlotList]] = None,
     ) -> None:
