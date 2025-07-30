@@ -100,7 +100,7 @@ class FuzzyNgramMatcher:
         # (start, end) -> value
         span_map: Dict[Tuple[int, int], SpanValue] = {}
         tokens = text_norm.split()
-        spans = self._trie.find(text_norm, unique=False)
+        spans = self._trie.find(text_norm, unique=False, word_boundaries=True)
 
         # Get values for spans in text
         for end_idx, span_text, span_value in spans:

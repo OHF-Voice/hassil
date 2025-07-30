@@ -50,12 +50,14 @@ class Trie:
 
             current_children = current_node.children
 
-    def find(self, text: str, unique: bool = True) -> Iterable[Tuple[int, str, Any]]:
+    def find(
+        self, text: str, unique: bool = True, word_boundaries: bool = False
+    ) -> Iterable[Tuple[int, str, Any]]:
         """Yield (end_pos, text, value) pairs of all words found in the string."""
         visited: Set[int] = set()
 
         for i in range(len(text)):
-            if not _is_word_boundary(text, i):
+            if word_boundaries and (not _is_word_boundary(text, i)):
                 continue
 
             current_children = self.roots
@@ -71,7 +73,7 @@ class Trie:
 
                 if (
                     (node.text is not None)
-                    and _is_end_boundary(text, match_end)
+                    and ((not word_boundaries) or _is_end_boundary(text, match_end))
                     and ((not unique) or (node.id not in visited))
                 ):
                     if unique:
