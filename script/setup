@@ -7,8 +7,6 @@ from pathlib import Path
 _DIR = Path(__file__).parent
 _PROGRAM_DIR = _DIR.parent
 _VENV_DIR = _PROGRAM_DIR / ".venv"
-_BUILD_DIR = _DIR.parent / "build" / "lib" / "hassil"
-_MODULE_DIR = _PROGRAM_DIR / "hassil"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dev", action="store_true", help="Install dev requirements")
@@ -30,5 +28,5 @@ subprocess.check_call(pip + ["install", "-e", str(_PROGRAM_DIR)])
 if args.dev:
     # Install dev requirements
     subprocess.check_call(
-        pip + ["install", "-r", str(_PROGRAM_DIR / "requirements_dev.txt")]
+        pip + ["install", "-e", f"{_PROGRAM_DIR}[dev]"]
     )
