@@ -236,7 +236,7 @@ def test_scene(matcher: FuzzyNgramMatcher) -> None:
 
 
 def test_timer_status(matcher: FuzzyNgramMatcher) -> None:
-    result = matcher.match("how about my timers")
+    result = matcher.match("what about my timers")
     assert result is not None
     assert result.intent_name == "HassTimerStatus"
     assert not result.slots

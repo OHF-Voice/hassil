@@ -15,12 +15,13 @@ from .sample import sample_expression
 from .trie import Trie
 from .util import normalize_text, remove_punctuation
 
-MIN_SCORE: Final = -15.0
+MIN_SCORE: Final = -13.0
 CLOSE_SCORE: Final = 1.0
 EQUAL_SCORE: Final = 0.1
 MIN_DIFF_SCORE: Final = 0.2
 UNK_LOG_PROB_SCALE: Final = -20
 STOP_WORD_LOG_PROB: Final = -10
+KEYWORD_BOOST_SCORE: Final = 2.0
 SKIP: Final = "<skip>"
 
 
@@ -88,6 +89,9 @@ class FuzzyNgramMatcher:
 
         self._trie = self._build_trie(slot_lists)
 
+        # intent -> word -> score
+        self._keyword_scores: Optional[Dict[str, Dict[str, float]]] = None
+
     def match(
         self,
         text: str,
@@ -100,6 +104,8 @@ class FuzzyNgramMatcher:
         # (start, end) -> value
         span_map: Dict[Tuple[int, int], SpanValue] = {}
         tokens = text_norm.split()
+        keyword_boosts = self._get_keyword_boosts(tokens)
+        print(keyword_boosts)
         spans = self._trie.find(text_norm, unique=False, word_boundaries=True)
 
         # Get values for spans in text
@@ -281,6 +287,12 @@ class FuzzyNgramMatcher:
                         cache=logprob_cache[model_name],
                     ) / len(tokens)
 
+                    intent_score += (
+                        keyword_boosts.get(model_name, 0.0) * KEYWORD_BOOST_SCORE
+                    )
+
+                    print(intent_score, intent_name, interp_tokens)
+
                     if (min_score is not None) and (intent_score < min_score):
                         # Below minimum score
                         continue
@@ -327,6 +339,7 @@ class FuzzyNgramMatcher:
                         best_slots = slot_values
                         best_name_domain = name_domain
                         best_scores.append((best_intent_name, best_score))
+                        print("Best:", best_intent_name, best_score, best_slots)
 
         if not best_intent_name:
             return None
@@ -475,3 +488,63 @@ class FuzzyNgramMatcher:
                 span_value.inferred_domain = domain
 
         return trie
+
+    def _get_keyword_boosts(self, words: Collection[str]) -> Dict[str, float]:
+        word_boosts: Dict[str, float] = defaultdict(lambda: 0.0)
+
+        if not self._keyword_scores:
+            self._build_keyword_scores()
+
+        assert self._keyword_scores is not None
+
+        for intent_name, word_scores in self._keyword_scores.items():
+            for word in words:
+                word_boosts[intent_name] += word_scores.get(word, 0.0)
+
+        if not word_boosts:
+            return word_boosts
+
+        max_boost = max(word_boosts.items(), key=lambda kv: kv[1])[1]
+        if max_boost > 0:
+            for intent_name in word_boosts:
+                word_boosts[intent_name] /= max_boost
+
+        return word_boosts
+
+    def _build_keyword_scores(self) -> None:
+        self._keyword_scores = defaultdict(dict)
+
+        num_intents = len(self.intent_models)
+        word_logprobs: Dict[str, Dict[str, float]] = defaultdict(dict)
+        for intent_name, model in self.intent_models.items():
+            for word in model.words:
+                if (
+                    word.startswith("<")
+                    or word.startswith("{")
+                    or (word in self.stop_words)
+                ):
+                    continue
+
+                word_logprobs[word][intent_name] = model.get_log_prob([word])
+
+        for word, intent_info in word_logprobs.items():
+            max_prob = None
+            for intent_name, log_prob in intent_info.items():
+                prob = 10**log_prob
+                self._keyword_scores[intent_name][word] = prob
+                if (max_prob is None) or (prob > max_prob):
+                    max_prob = prob
+
+            df = len(intent_info)
+            idf = math.log(num_intents / (1 + df))
+            if max_prob is None:
+                max_prob = 1.0
+
+            for intent_name in intent_info:
+                score = (self._keyword_scores[intent_name][word] / max_prob) * idf
+                self._keyword_scores[intent_name][word] = score
+
+        for intent_name, word_scores in self._keyword_scores.items():
+            max_score = max(word_scores.values())
+            for word, score in word_scores.items():
+                word_scores[word] = score / max_score
