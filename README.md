@@ -1,6 +1,6 @@
 # HassIL
 
-The Home Assistant Intent Language (HassIL) parser for [intents](https://github.com/home-assistant/intents).
+The Home Assistant Intent Language (HassIL) parser for [intents](https://github.com/OHF-Voice/intents).
 
 
 ## Dependencies
