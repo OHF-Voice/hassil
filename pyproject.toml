@@ -35,7 +35,7 @@ dev = [
     "flake8==7.2.0",
     "mypy==1.14.0",
     "pylint==3.2.7",
-    "pytest==8.3.5",
+    "pytest==8.4.1",
     "tox==4.26.0",
     "build==1.2.2",
     "home-assistant-intents==2025.7.30",
