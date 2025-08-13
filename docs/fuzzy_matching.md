@@ -1,12 +1,21 @@
 # Fuzzy Matching
 
 Matching in hassil is strict. The template `set lights to (red|green|blue)` cannot match the sentence "red lights", for example.
+Fuzzy matching allows hassil to recognize sentences outside of this strict set using [existing sentence templates][intents] as training material.
+
+Our approach to fuzzy matching is inspired by [Mycroft's Adapt][adapt] but with several important differences:
+
+* Hassil sentence templates are training material
+* Automatically discovered groups of words (n-grams) instead of hand-coded keywords and phrases
+* Multiple interpretations of input sentence constrained by possible [slot combinations][]
+* Common words like "ok" and "please" are ignored
+* Unique intent words can be used to break ties
 
 ## Training
 
 With **fuzzy matching**, hassil can take advantage of [n-gram][] models to match sentences beyond the templates alone. An n-gram model contains the probabilities of word groups with the size of the largest group called the model's **order**. For example, an order 3 n-gram model of the template above would have probabilities for groups like "set", "set lights", "set lights to", "lights to red", and so on.
 
-Because all possible word groups will never be present in the training data, n-gram models use different "smoothing" methods to guess their probabilities. hassil's fuzzy matching models are order 4 with [Kneser-Ney smoothing][kneser-ney].
+Because all possible word groups will never be present in the training data, n-gram models use different "smoothing" methods to guess their probabilities. hassil's fuzzy matching models are order 4 with [Kneser-Ney smoothing][kneser-ney]. Different orders were tested, with 3 being too low and 5 not providing much more benefit.
 
 An n-gram model is trained per intent, and in some cases per domain and intent. The `HassTurnOn` intent is used to turn on lights as well as open covers. To avoid the sentence "open the office lights" turning them on, a separate `cover_HassTurnOn` intent is trained. The same is done for locks, etc.
 
@@ -59,3 +68,6 @@ Lastly, "skip" and [stop words][] are used to ignore things like "could you plea
 [trie]: https://en.wikipedia.org/wiki/Trie
 [slot combinations]: https://github.com/OHF-Voice/intents/blob/main/docs/slot_combinations.md
 [stop words]: https://en.wikipedia.org/wiki/Stop_word
+[intents]: https://github.com/OHF-Voice/intents
+[adapt]: https://github.com/MycroftAI/adapt
+[slot combinations]: https://github.com/OHF-Voice/intents/blob/main/docs/slot_combinations.md
