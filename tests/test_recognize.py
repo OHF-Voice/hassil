@@ -2070,3 +2070,51 @@ def test_list_value_in_no_out() -> None:
         assert result is not None, value
         assert "value2" in result.entities
         assert result.entities["value2"].value == value
+
+
+def test_captures() -> None:
+    """Test captures for response only."""
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "open windows {preposition:@preposition} the {area}"
+              - "close windows {@preposition} the {area}"
+    lists:
+      preposition:
+        values:
+          - "in"
+          - "on"
+      area:
+        values:
+          - kitchen
+          - deck
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    result = recognize("open windows in the kitchen", intents)
+    assert result is not None
+
+    # area is an entity
+    assert result.entities.keys() == {"area"}
+
+    # preposition is a capture
+    assert result.captures.keys() == {"preposition"}
+    prep = result.captures["preposition"]
+    assert prep.name == "preposition"
+    assert prep.text == "in"
+
+    assert len(result.captures_list) == 1
+    assert result.captures_list[0] == prep
+
+    # Test compact syntax
+    result = recognize("close windows on the deck", intents)
+    assert result is not None
+
+    assert result.entities.keys() == {"area"}
+    assert result.captures.keys() == {"preposition"}
+    assert result.captures["preposition"].text == "on"
