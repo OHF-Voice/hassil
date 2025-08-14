@@ -10,7 +10,7 @@ WHITESPACE = re.compile(r"\s+")
 WHITESPACE_CAPTURE = re.compile(r"(\s+)")
 WHITESPACE_SEPARATOR = " "
 
-TEMPLATE_SYNTAX = re.compile(r".*[(){}<>\[\]|].*")
+TEMPLATE_SYNTAX = re.compile(r".*[(){}<>\[\]|@].*")
 
 PUNCTUATION_STR_NO_PERIOD = "。,，?¿？؟!¡！;；:：’"
 PUNCTUATION_PATTERN_NO_PERIOD = rf"[{re.escape(PUNCTUATION_STR_NO_PERIOD)}]+"

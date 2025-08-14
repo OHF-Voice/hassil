@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.2.0
+
+- Add capture syntax (`{list_name:@capture_name}` and `{@list_name}`)
+    - Only available in responses, not entities/slots
+    - `{@list_name}` is the same as `{list_name:@list_name}`
+
 ## 3.1.0
 
 - Add fuzzy n-gram matcher (beta)

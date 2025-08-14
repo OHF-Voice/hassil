@@ -135,12 +135,23 @@ class ListReference(Expression):
     prefix: Optional[str] = None
     suffix: Optional[str] = None
     is_end_of_word: bool = True
+    is_capture: bool = False
     _slot_name: Optional[str] = None
 
     def __post_init__(self):
         if ":" in self.list_name:
             # list_name:slot_name
             self.list_name, self._slot_name = self.list_name.split(":", maxsplit=1)
+            if self._slot_name.startswith("@"):
+                # Capture (only available in response)
+                self.is_capture = True
+                self._slot_name = self._slot_name[1:]
+        elif self.list_name.startswith("@"):
+            # Compact capture syntax
+            # {@x} is the same as {x:@x}
+            self.list_name = self.list_name[1:]
+            self._slot_name = self.list_name
+            self.is_capture = True
         else:
             self._slot_name = self.list_name
 

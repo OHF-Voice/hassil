@@ -63,3 +63,14 @@ class UnmatchedRangeEntity(UnmatchedEntity):
 
     value: Union[int, float]
     """Value of entity that was out of range."""
+
+
+@dataclass
+class MatchCapture:
+    """Captured text from {list_name:@capture_name}"""
+
+    name: str
+    """Name of capture."""
+
+    text: str
+    """Original value text."""

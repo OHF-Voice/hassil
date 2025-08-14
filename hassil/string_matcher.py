@@ -29,6 +29,7 @@ from .intents import (
     WildcardSlotList,
 )
 from .models import (
+    MatchCapture,
     MatchEntity,
     UnmatchedEntity,
     UnmatchedRangeEntity,
@@ -114,6 +115,13 @@ class MatchContext:
 
     intent_data: Optional[IntentData] = None
     """Data from sentence template group in intents."""
+
+    captures: List[MatchCapture] = field(default_factory=list)
+    """Captures that have been found in input text.
+
+    These are written as {list_name:@capture_name} and are available in the
+    response only.
+    """
 
     def __post_init__(self):
         if self.close_wildcards:
@@ -218,6 +226,7 @@ def match_expression(
                         text_chunks_matched=context.text_chunks_matched,
                         intent_sentence=context.intent_sentence,
                         intent_data=context.intent_data,
+                        captures=context.captures,
                     )
                     return
 
@@ -275,6 +284,7 @@ def match_expression(
                             text_chunks_matched=context.text_chunks_matched,
                             intent_sentence=context.intent_sentence,
                             intent_data=context.intent_data,
+                            captures=context.captures,
                         ),
                         expression,
                     )
@@ -307,6 +317,7 @@ def match_expression(
                     unmatched_entities=context.unmatched_entities,
                     intent_sentence=context.intent_sentence,
                     intent_data=context.intent_data,
+                    captures=context.captures,
                     #
                     close_wildcards=is_chunk_non_empty,
                     close_unmatched=is_chunk_non_empty,
@@ -335,6 +346,7 @@ def match_expression(
                         text_chunks_matched=context.text_chunks_matched,
                         intent_sentence=context.intent_sentence,
                         intent_data=context.intent_data,
+                        captures=context.captures,
                         #
                         close_wildcards=is_chunk_non_empty,
                         close_unmatched=is_chunk_non_empty,
@@ -370,6 +382,7 @@ def match_expression(
                                 text_chunks_matched=context.text_chunks_matched,
                                 intent_sentence=context.intent_sentence,
                                 intent_data=context.intent_data,
+                                captures=context.captures,
                                 #
                                 entities=entities,
                             )
@@ -419,6 +432,7 @@ def match_expression(
                                 + len(chunk.text.strip()),
                                 intent_sentence=context.intent_sentence,
                                 intent_data=context.intent_data,
+                                captures=context.captures,
                                 #
                                 unmatched_entities=unmatched_entities,
                             )
@@ -517,6 +531,7 @@ def match_expression(
                             text_chunks_matched=context.text_chunks_matched,
                             intent_sentence=context.intent_sentence,
                             intent_data=context.intent_data,
+                            captures=context.captures,
                         ),
                         slot_value.text_in,
                     )
@@ -544,23 +559,31 @@ def match_expression(
                             else remaining_text
                         )
 
-                        entities = value_context.entities + [
-                            MatchEntity(
-                                name=list_ref.slot_name,
-                                value=(
-                                    entity_text
-                                    if slot_value.value_out is None
-                                    else slot_value.value_out
-                                ),
-                                text=entity_text,
-                                metadata=slot_value.metadata,
-                            )
-                        ]
+                        if list_ref.is_capture:
+                            entities = value_context.entities
+                            captures = value_context.captures + [
+                                MatchCapture(name=list_ref.slot_name, text=entity_text)
+                            ]
+                        else:
+                            entities = value_context.entities + [
+                                MatchEntity(
+                                    name=list_ref.slot_name,
+                                    value=(
+                                        entity_text
+                                        if slot_value.value_out is None
+                                        else slot_value.value_out
+                                    ),
+                                    text=entity_text,
+                                    metadata=slot_value.metadata,
+                                )
+                            ]
+                            captures = value_context.captures
 
                         if slot_value.context:
                             # Merge context from matched list value
                             yield MatchContext(
                                 entities=entities,
+                                captures=captures,
                                 intent_context={
                                     **context.intent_context,
                                     **slot_value.context,
@@ -576,6 +599,7 @@ def match_expression(
                         else:
                             yield MatchContext(
                                 entities=entities,
+                                captures=captures,
                                 # Copy over
                                 text=value_context.text,
                                 intent_context=value_context.intent_context,
@@ -597,6 +621,7 @@ def match_expression(
                         text_chunks_matched=context.text_chunks_matched,
                         intent_sentence=context.intent_sentence,
                         intent_data=context.intent_data,
+                        captures=context.captures,
                         #
                         unmatched_entities=context.unmatched_entities
                         + [UnmatchedTextEntity(name=list_ref.slot_name, text="")],
@@ -674,6 +699,7 @@ def match_expression(
                                     text_chunks_matched=context.text_chunks_matched,
                                     intent_sentence=context.intent_sentence,
                                     intent_data=context.intent_data,
+                                    captures=context.captures,
                                 )
                             else:
                                 # Wildcard consumes text before number
@@ -693,6 +719,7 @@ def match_expression(
                                     text_chunks_matched=context.text_chunks_matched,
                                     intent_sentence=context.intent_sentence,
                                     intent_data=context.intent_data,
+                                    captures=context.captures,
                                     #
                                     close_wildcards=True,
                                 )
@@ -707,6 +734,7 @@ def match_expression(
                                 text_chunks_matched=context.text_chunks_matched,
                                 intent_sentence=context.intent_sentence,
                                 intent_data=context.intent_data,
+                                captures=context.captures,
                                 #
                                 unmatched_entities=context.unmatched_entities
                                 + [
@@ -773,6 +801,7 @@ def match_expression(
                                             text_chunks_matched=context.text_chunks_matched,
                                             intent_sentence=context.intent_sentence,
                                             intent_data=context.intent_data,
+                                            captures=context.captures,
                                         ),
                                         TextChunk(number_text),
                                     )
@@ -792,6 +821,7 @@ def match_expression(
                                             text_chunks_matched=context.text_chunks_matched,
                                             intent_sentence=context.intent_sentence,
                                             intent_data=context.intent_data,
+                                            captures=context.captures,
                                             #
                                             close_wildcards=True,
                                         ),
@@ -819,6 +849,7 @@ def match_expression(
                         text_chunks_matched=context.text_chunks_matched,
                         intent_sentence=context.intent_sentence,
                         intent_data=context.intent_data,
+                        captures=context.captures,
                         #
                         unmatched_entities=context.unmatched_entities
                         + [UnmatchedTextEntity(name=list_ref.slot_name, text="")],
@@ -836,6 +867,7 @@ def match_expression(
                     text_chunks_matched=context.text_chunks_matched,
                     intent_sentence=context.intent_sentence,
                     intent_data=context.intent_data,
+                    captures=context.captures,
                     #
                     entities=context.entities
                     + [

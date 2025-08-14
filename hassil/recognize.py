@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterable, List, MutableSequence, Optional, Tuple
 
 from .expression import Sentence
 from .intents import Intent, IntentData, Intents, SlotList
-from .models import MatchEntity, UnmatchedEntity, UnmatchedTextEntity
+from .models import MatchCapture, MatchEntity, UnmatchedEntity, UnmatchedTextEntity
 from .string_matcher import MatchContext, MatchSettings, match_expression
 from .util import (
     WHITESPACE,
@@ -60,6 +60,12 @@ class RecognizeResult:
 
     intent_metadata: Optional[Dict[str, Any]] = None
     """Metadata from the intent sentence that was matched."""
+
+    captures: Dict[str, MatchCapture] = field(default_factory=dict)
+    """Captures for response mapped by name."""
+
+    captures_list: List[MatchCapture] = field(default_factory=list)
+    """Captures for response as a list (duplicates allowed)."""
 
 
 def recognize(
@@ -382,6 +388,10 @@ def _process_match_contexts(
             text_chunks_matched=maybe_match_context.text_chunks_matched,
             intent_sentence=maybe_match_context.intent_sentence,
             intent_metadata=intent_metadata,
+            captures={
+                capture.name: capture for capture in maybe_match_context.captures
+            },
+            captures_list=maybe_match_context.captures,
         )
 
 
