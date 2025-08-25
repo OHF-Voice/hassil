@@ -5,6 +5,7 @@
 - Add capture syntax (`{list_name:@capture_name}` and `{@list_name}`)
     - Only available in responses, not entities/slots
     - `{@list_name}` is the same as `{list_name:@list_name}`
+- Close sqlite3 connection in fuzzy matching
 
 ## 3.1.0
 
