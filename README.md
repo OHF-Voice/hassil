@@ -2,6 +2,7 @@
 
 The Home Assistant Intent Language (HassIL) parser for [intents](https://github.com/OHF-Voice/intents).
 
+[Template syntax](docs/template_syntax.md)
 
 ## Dependencies
 
