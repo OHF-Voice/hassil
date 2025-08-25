@@ -38,7 +38,7 @@ class Sqlite3NgramModel:
         if cache is None:
             cache = {}
 
-        _conn: Optional[sqlite3.Connection] = None
+        conn: Optional[sqlite3.Connection] = None
         cur: Optional[sqlite3.Cursor] = None
 
         total_log_prob = 0.0
@@ -80,7 +80,7 @@ class Sqlite3NgramModel:
                             f"{prefix_id_str} {word_id}" if prefix_id_str else word_id
                         )
                         if cur is None:
-                            _conn, cur = self._get_cursor()
+                            conn, cur = self._get_cursor()
 
                         cur.execute(
                             "SELECT log_prob FROM ngrams WHERE word_ids = ?",
@@ -94,7 +94,7 @@ class Sqlite3NgramModel:
 
                     # Backoff weight if exact ngram wasn't found
                     if cur is None:
-                        _conn, cur = self._get_cursor()
+                        conn, cur = self._get_cursor()
 
                     cur.execute(
                         "SELECT backoff FROM ngrams WHERE word_ids = ?",
@@ -114,6 +114,14 @@ class Sqlite3NgramModel:
 
             # Store in external prefix cache
             cache[context_key] = total_log_prob
+
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass  # ignore errors
+            finally:
+                conn = None
 
         return total_log_prob
 
