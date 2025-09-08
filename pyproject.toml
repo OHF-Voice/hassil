@@ -38,7 +38,7 @@ dev = [
     "pytest==8.4.2",
     "tox==4.26.0",
     "build==1.2.2",
-    "home-assistant-intents==2025.7.30",
+    "home-assistant-intents==2025.9.3",
 ]
 
 [project.urls]
