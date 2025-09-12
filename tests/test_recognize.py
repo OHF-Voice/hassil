@@ -2118,3 +2118,34 @@ def test_captures() -> None:
     assert result.entities.keys() == {"area"}
     assert result.captures.keys() == {"preposition"}
     assert result.captures["preposition"].text == "on"
+
+
+def test_multiple_targets() -> None:
+    """Test multiple targets in a single sentences with the same slot name."""
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "turn on {area} and {area} lights"
+    lists:
+      area:
+        values:
+          - kitchen
+          - living room
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    result = recognize("turn on living room and kitchen lights", intents)
+    assert result is not None
+
+    # area is an entity list
+    assert result.entities.keys() == {"area"}
+    areas = result.entities["area"]
+    assert isinstance(areas, list)
+    assert len(areas) == 2
+    assert areas[0].value == "living room"
+    assert areas[1].value == "kitchen"

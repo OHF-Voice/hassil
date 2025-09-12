@@ -4,7 +4,7 @@ import collections.abc
 import itertools
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, MutableSequence, Optional, Tuple
+from typing import Any, Dict, Iterable, List, MutableSequence, Optional, Tuple, Union
 
 from .expression import Sentence
 from .intents import Intent, IntentData, Intents, SlotList
@@ -34,7 +34,9 @@ class RecognizeResult:
     intent_data: IntentData
     """Matched intent data"""
 
-    entities: Dict[str, MatchEntity] = field(default_factory=dict)
+    entities: Dict[str, Union[MatchEntity, List[MatchEntity]]] = field(
+        default_factory=dict
+    )
     """Matched entities mapped by name."""
 
     entities_list: List[MatchEntity] = field(default_factory=list)
@@ -357,10 +359,23 @@ def _process_match_contexts(
         if maybe_match_context.intent_data is not None:
             intent_metadata = maybe_match_context.intent_data.metadata
 
+        entities: Dict[str, Union[MatchEntity, List[MatchEntity]]] = {}
+        for match_entity in maybe_match_context.entities:
+            current_entity = entities.get(match_entity.name)
+            if current_entity is None:
+                # First entity for this slot
+                entities[match_entity.name] = match_entity
+            elif isinstance(current_entity, list):
+                # Add to list
+                current_entity.append(match_entity)
+            else:
+                # Convert to list
+                entities[match_entity.name] = [current_entity, match_entity]
+
         yield RecognizeResult(
             intent=intent,
             intent_data=intent_data,
-            entities={entity.name: entity for entity in maybe_match_context.entities},
+            entities=entities,
             entities_list=maybe_match_context.entities,
             response=response,
             context=maybe_match_context.intent_context,
