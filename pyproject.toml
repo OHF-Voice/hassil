@@ -33,7 +33,7 @@ dependencies = [
 dev = [
     "black==24.8.0",
     "flake8==7.2.0",
-    "mypy==1.14.0",
+    "mypy==1.18.1",
     "pylint==3.2.7",
     "pytest==8.4.2",
     "tox==4.26.0",
