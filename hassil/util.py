@@ -68,6 +68,7 @@ def normalize_text(text: str) -> str:
     """Normalize whitespace and unicode forms."""
     text = normalize_whitespace(text)
     text = unicodedata.normalize("NFC", text)
+    text = text.replace("’", "'")
 
     return text
 
