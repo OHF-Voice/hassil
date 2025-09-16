@@ -1,9 +1,14 @@
 """Utility methods."""
 
-import collections
 import re
 import unicodedata
-from collections.abc import Mapping, MutableMapping
+from collections.abc import (
+    Collection,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+    Sequence,
+)
 from typing import Any, Dict, Iterable, Optional
 
 WHITESPACE = re.compile(r"\s+")
@@ -34,17 +39,13 @@ def merge_dict(
     for key, value in new_dict.items():
         if key in base_dict:
             old_value = base_dict[key]
-            if isinstance(old_value, collections.abc.MutableMapping):
+            if isinstance(old_value, MutableMapping):
                 # Combine dictionary
-                assert isinstance(
-                    value, collections.abc.Mapping
-                ), f"Not a dict: {value}"
+                assert isinstance(value, Mapping), f"Not a dict: {value}"
                 merge_dict(old_value, value)
-            elif isinstance(old_value, collections.abc.MutableSequence):
+            elif isinstance(old_value, MutableSequence):
                 # Combine list
-                assert isinstance(
-                    value, collections.abc.Sequence
-                ), f"Not a list: {value}"
+                assert isinstance(value, Sequence), f"Not a list: {value}"
                 old_value.extend(value)
             else:
                 # Overwrite
@@ -98,7 +99,7 @@ def check_required_context(
 
             return False
 
-        if isinstance(required_value, collections.abc.Mapping):
+        if isinstance(required_value, Mapping):
             # Unpack dict
             # <context_key>:
             #   value: ...
@@ -107,14 +108,14 @@ def check_required_context(
         # Ensure value matches
         actual_value = match_context[required_key]
 
-        if isinstance(actual_value, collections.abc.Mapping):
+        if isinstance(actual_value, Mapping):
             # Unpack dict
             # <context_key>:
             #   value: ...
             actual_value = actual_value.get("value")
 
         if (not isinstance(required_value, str)) and isinstance(
-            required_value, collections.abc.Collection
+            required_value, Collection
         ):
             if actual_value not in required_value:
                 # Match value not in required list
@@ -137,7 +138,7 @@ def check_excluded_context(
         if (not match_context) or (excluded_key not in match_context):
             continue
 
-        if isinstance(excluded_value, collections.abc.Mapping):
+        if isinstance(excluded_value, Mapping):
             # Unpack dict
             # <context_key>:
             #   value: ...
@@ -146,14 +147,14 @@ def check_excluded_context(
         # Ensure value does not match
         actual_value = match_context[excluded_key]
 
-        if isinstance(actual_value, collections.abc.Mapping):
+        if isinstance(actual_value, Mapping):
             # Unpack dict
             # <context_key>:
             #   value: ...
             actual_value = actual_value.get("value")
 
         if (not isinstance(excluded_value, str)) and isinstance(
-            excluded_value, collections.abc.Collection
+            excluded_value, Collection
         ):
             if actual_value in excluded_value:
                 # Match value is in excluded list
