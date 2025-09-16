@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.2.1
+
+- Normalize apostrophe `’` to `'`
+
 ## 3.2.0
 
 - Add capture syntax (`{list_name:@capture_name}` and `{@list_name}`)

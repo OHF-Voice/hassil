@@ -330,6 +330,24 @@ def test_list_text_normalized() -> None:
     assert result.entities["test_name"].value == "tEsT    1"
 
 
+def test_sentence_text_normalized() -> None:
+    """Ensure sentence text is normalized."""
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "what's the time"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    result = recognize("what’s the time", intents)
+    assert result is not None
+
+
 def test_skip_prefix() -> None:
     yaml_text = """
     language: "en"

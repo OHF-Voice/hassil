@@ -24,6 +24,7 @@ def test_normalize_whitespace():
 
 def test_normalize_text():
     assert normalize_text("tHIS    is A      Test") == "tHIS is A Test"
+    assert normalize_text("what’s") == "what's"
 
 
 def test_is_template():
@@ -42,3 +43,5 @@ def test_remove_punctuation():
     assert remove_punctuation("A.C") == "A.C"
     assert remove_punctuation("turn A.C. off") == "turn A.C. off"
     assert remove_punctuation("Main St. next") == "Main St next"
+    assert remove_punctuation("Chambre d'Ariane") == "Chambre d'Ariane"
+    assert remove_punctuation("Chambre d’Ariane") == "Chambre d’Ariane"
