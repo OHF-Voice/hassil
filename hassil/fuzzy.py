@@ -105,7 +105,6 @@ class FuzzyNgramMatcher:
         span_map: Dict[Tuple[int, int], SpanValue] = {}
         tokens = text_norm.split()
         keyword_boosts = self._get_keyword_boosts(tokens)
-        print(keyword_boosts)
         spans = self._trie.find(text_norm, unique=False, word_boundaries=True)
 
         # Get values for spans in text
@@ -291,8 +290,6 @@ class FuzzyNgramMatcher:
                         keyword_boosts.get(model_name, 0.0) * KEYWORD_BOOST_SCORE
                     )
 
-                    print(intent_score, intent_name, interp_tokens)
-
                     if (min_score is not None) and (intent_score < min_score):
                         # Below minimum score
                         continue
@@ -339,7 +336,6 @@ class FuzzyNgramMatcher:
                         best_slots = slot_values
                         best_name_domain = name_domain
                         best_scores.append((best_intent_name, best_score))
-                        print("Best:", best_intent_name, best_score, best_slots)
 
         if not best_intent_name:
             return None
