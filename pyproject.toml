@@ -37,12 +37,22 @@ dev = [
     "pylint==3.2.7",
     "pytest==8.4.2",
     "tox==4.26.0",
+    "types-PyYAML==6.0.12.20250915",
     "build==1.3.0",
     "home-assistant-intents==2025.7.30",
 ]
 
 [project.urls]
 "Source Code" = "https://github.com/OHF-Voice/hassil"
+
+[tool.mypy]
+pretty = true
+
+[[tool.mypy.overrides]]
+module = [
+    "home_assistant_intents.*",
+]
+ignore_missing_imports = true
 
 [tool.setuptools]
 platforms = ["any"]
