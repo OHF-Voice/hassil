@@ -48,6 +48,12 @@ dev = [
 [tool.mypy]
 pretty = true
 
+[[tool.mypy.overrides]]
+module = [
+    "home_assistant_intents.*",
+]
+ignore_missing_imports = true
+
 [tool.setuptools]
 platforms = ["any"]
 zip-safe  = true
