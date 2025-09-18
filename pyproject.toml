@@ -44,6 +44,9 @@ dev = [
 [project.urls]
 "Source Code" = "https://github.com/OHF-Voice/hassil"
 
+[tool.mypy]
+pretty = true
+
 [tool.setuptools]
 platforms = ["any"]
 zip-safe  = true
