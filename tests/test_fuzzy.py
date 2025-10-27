@@ -263,3 +263,15 @@ def test_stop_words(matcher: FuzzyNgramMatcher) -> None:
     assert result.intent_name == "HassTurnOff"
     assert result.slots.keys() == {"name"}
     assert result.slots["name"] == FuzzySlotValue(value="A.C.", text="A.C.")
+
+
+def test_misspelled_area(matcher: FuzzyNgramMatcher) -> None:
+    """Test that context area is used when domain-only sentence is matched."""
+    result = matcher.match(
+        "turn off lights in the spaceship", context_area="Living Room"
+    )
+    assert result is not None
+    assert result.intent_name == "HassTurnOff"
+    assert result.slots.keys() == {"domain", "area"}
+    assert result.slots["domain"] == FuzzySlotValue(value="light", text="lights")
+    assert result.slots["area"] == FuzzySlotValue(value="Living Room", text="")

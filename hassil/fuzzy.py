@@ -95,6 +95,7 @@ class FuzzyNgramMatcher:
     def match(
         self,
         text: str,
+        context_area: Optional[str] = None,
         min_score: Optional[float] = MIN_SCORE,
         close_score: Optional[float] = CLOSE_SCORE,
         equal_score: Optional[float] = EQUAL_SCORE,
@@ -348,16 +349,20 @@ class FuzzyNgramMatcher:
                 if abs(other_score - best_score) < MIN_DIFF_SCORE:
                     return None
 
+        result_slots = (
+            {
+                slot_name: FuzzySlotValue(value=slot_value, text=slot_text)
+                for slot_name, (slot_value, slot_text) in best_slots.items()
+            }
+            if best_slots is not None
+            else {}
+        )
+        if context_area and (result_slots.keys() == {"domain"}):
+            result_slots["area"] = FuzzySlotValue(value=context_area, text="")
+
         return FuzzyResult(
             intent_name=best_intent_name,
-            slots=(
-                {
-                    slot_name: FuzzySlotValue(value=slot_value, text=slot_text)
-                    for slot_name, (slot_value, slot_text) in best_slots.items()
-                }
-                if best_slots is not None
-                else {}
-            ),
+            slots=result_slots,
             score=best_score,
             name_domain=best_name_domain,
         )
