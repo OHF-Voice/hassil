@@ -188,7 +188,7 @@ def test_set_color(matcher: FuzzyNgramMatcher) -> None:
 
 
 def test_set_volume(matcher: FuzzyNgramMatcher) -> None:
-    result = matcher.match("TV 50")
+    result = matcher.match("set TV 50")
     assert result is not None
     assert result.intent_name == "HassSetVolume"
     assert result.slots.keys() == {"name", "volume_level"}
