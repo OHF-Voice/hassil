@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.3.0
+
+- Add context area to fuzzy matcher
+
 ## 3.2.1
 
 - Normalize apostrophe `’` to `'`
