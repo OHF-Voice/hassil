@@ -1,7 +1,8 @@
 # Changelog
 
-## 3.3.1
+## 3.4.0
 
+- Filter intent slot combinations using context area
 - Fall back to language family for number words
 
 ## 3.3.0
