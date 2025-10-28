@@ -2136,3 +2136,30 @@ def test_captures() -> None:
     assert result.entities.keys() == {"area"}
     assert result.captures.keys() == {"preposition"}
     assert result.captures["preposition"].text == "on"
+
+
+def test_number_language_with_region() -> None:
+    """Test that the number language can contain a region."""
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "set volume to {volume}"
+    lists:
+      volume:
+        range:
+          from: 0
+          to: 100
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    # Use language with region (US)
+    result = recognize("set volume to fifty", intents, language="en-US")
+    assert result is not None
+
+    assert result.entities.keys() == {"volume"}
+    assert result.entities["volume"].value == 50

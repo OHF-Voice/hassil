@@ -905,7 +905,18 @@ def _build_range_trie(language: str, range_list: RangeSlotList) -> Trie:
     # Load number formatting engine
     engine = _ENGINE_CACHE.get(language)
     if engine is None:
-        engine = RbnfEngine.for_language(language)
+        try:
+            engine = RbnfEngine.for_language(language)
+        except ValueError as err:
+            # Fall back to language family (e.g., "en" for "en-US")
+            lang_match = re.match(r"^(.+)[-_].+$", language)
+            if lang_match:
+                lang_family = lang_match.group(1)
+                engine = RbnfEngine.for_language(lang_family)
+
+            if engine is None:
+                raise err
+
         _ENGINE_CACHE[language] = engine
 
     for word_number in range_list.get_numbers():

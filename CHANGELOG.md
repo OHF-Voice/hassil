@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.3.1
+
+- Fall back to language family for number words
+
 ## 3.3.0
 
 - Add context area to fuzzy matcher
