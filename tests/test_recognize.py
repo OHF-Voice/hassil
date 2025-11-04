@@ -2163,3 +2163,29 @@ def test_number_language_with_region() -> None:
 
     assert result.entities.keys() == {"volume"}
     assert result.entities["volume"].value == 50
+
+
+def test_number_word_casing() -> None:
+    """Test that a number word's case can vary."""
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "set volume to {volume}"
+    lists:
+      volume:
+        range:
+          from: 0
+          to: 100
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    for number_word in ("fifty", "FIFTY", "Fifty", "fifTy"):
+        result = recognize(f"set volume to {number_word}", intents, language="en-US")
+        assert result is not None, number_word
+        assert result.entities.keys() == {"volume"}
+        assert result.entities["volume"].value == 50

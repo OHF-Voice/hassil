@@ -51,10 +51,16 @@ class Trie:
             current_children = current_node.children
 
     def find(
-        self, text: str, unique: bool = True, word_boundaries: bool = False
+        self,
+        text: str,
+        unique: bool = True,
+        word_boundaries: bool = False,
+        ignore_case: bool = False,
     ) -> Iterable[Tuple[int, str, Any]]:
         """Yield (end_pos, text, value) pairs of all words found in the string."""
         visited: Set[int] = set()
+        if ignore_case:
+            text = text.lower()
 
         for i in range(len(text)):
             if word_boundaries and (not _is_word_boundary(text, i)):
@@ -67,7 +73,17 @@ class Trie:
                 current_char = text[current_position]
                 node = current_children.get(current_char)
                 if node is None:
-                    break
+                    if not ignore_case:
+                        break
+
+                    if current_char.islower():
+                        current_char = current_char.upper()
+                    else:
+                        current_char = current_char.lower()
+
+                    node = current_children.get(current_char)
+                    if node is None:
+                        break
 
                 match_end = current_position + 1
 

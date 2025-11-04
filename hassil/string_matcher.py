@@ -774,7 +774,7 @@ def match_expression(
                                 number_end_pos,
                                 number_text,
                                 range_value,
-                            ) in range_trie.find(context.text):
+                            ) in range_trie.find(context.text, ignore_case=True):
                                 number_start_pos = number_end_pos - len(number_text)
                                 if (wildcard is None) and (number_start_pos > 0):
                                     # Can't possibly match because the number

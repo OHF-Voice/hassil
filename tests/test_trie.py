@@ -64,3 +64,21 @@ def test_multiple_values() -> None:
     trie.insert("test", 2)
 
     assert list(trie.find("this is a test")) == [(14, "test", 1), (14, "test", 2)]
+
+
+def test_find_ignore_case() -> None:
+    """Test ignoring case with find."""
+    trie = Trie()
+    trie.insert("tEsT", 1)
+
+    assert list(trie.find("this is a tEsT")) == [(14, "tEsT", 1)]
+
+    # Not ignoring case
+    for word in ("test", "TEST", "TeSt"):
+        assert not list(trie.find(f"this is a {word}")), word
+
+    # Ignoring case
+    for word in ("test", "TEST", "TeSt", "tEsT"):
+        assert list(trie.find(f"this is a {word}", ignore_case=True)) == [
+            (14, "tEsT", 1)
+        ], word
