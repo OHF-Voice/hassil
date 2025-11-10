@@ -67,6 +67,9 @@ class RecognizeResult:
     captures_list: List[MatchCapture] = field(default_factory=list)
     """Captures for response as a list (duplicates allowed)."""
 
+    original_text: str = ""
+    """Original text from match."""
+
 
 def recognize(
     text: str,
@@ -265,6 +268,7 @@ def recognize_all(
                 intent_context=intent_context,
                 intent_sentence=intent_sentence,
                 intent_data=intent_data,
+                original_text=text,
             )
             maybe_match_contexts = match_expression(
                 match_settings, match_context, intent_sentence.expression
@@ -299,6 +303,11 @@ def _process_match_contexts(
                 wildcard.text += final_text
                 wildcard.value = wildcard.text
                 wildcard.is_wildcard_open = False
+                if wildcard.text_span is not None:
+                    wildcard.text_span = (
+                        wildcard.text_span[0],
+                        wildcard.text_span[0] + len(wildcard.text),
+                    )
                 maybe_match_context.text = ""
 
         if not maybe_match_context.is_match:
@@ -375,6 +384,7 @@ def _process_match_contexts(
                 capture.name: capture for capture in maybe_match_context.captures
             },
             captures_list=maybe_match_context.captures,
+            original_text=maybe_match_context.original_text,
         )
 
 

@@ -2,7 +2,7 @@
 
 from abc import ABC
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from .util import remove_punctuation
 
@@ -31,6 +31,9 @@ class MatchEntity:
 
     is_wildcard_end_of_word: bool = True
     """True if wildcard {list} is followed by whitespace."""
+
+    text_span: Optional[Tuple[int, int]] = None
+    """Span of text where this entity was matched."""
 
     @property
     def text_clean(self) -> str:

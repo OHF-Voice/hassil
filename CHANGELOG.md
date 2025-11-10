@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.5.0
+
+- Add `text_span` to matched entities so they can be mapped back to the original input text
+
 ## 3.4.1
 
 - Ignore case when matching number words

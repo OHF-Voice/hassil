@@ -135,6 +135,7 @@ def test_turn_on(intents, slot_lists):
     area = result.entities["area"]
     assert area.name == "area"
     assert area.value == "area.kitchen"
+    assert area.text_span == (8, 15)
 
     # From YAML
     assert result.entities["domain"].value == "media_player"
@@ -153,6 +154,7 @@ def test_brightness_area(intents, slot_lists):
 
     assert result.entities["area"].value == "area.living_room"
     assert result.entities["brightness_pct"].value == 75
+    assert result.entities["brightness_pct"].text_span == (41, 43)
 
     # From YAML
     assert result.entities["domain"].value == "light"
@@ -172,10 +174,14 @@ def test_brightness_area_words(intents, slot_lists):
 
     assert result.entities["area"].value == "area.living_room"
     assert result.entities["brightness_pct"].value == 42
+    assert result.entities["brightness_pct"].text_span == (37, 46)
 
     # From YAML
     assert result.entities["domain"].value == "light"
+    assert result.entities["domain"].text_span is None
+
     assert result.entities["name"].value == "all"
+    assert result.entities["name"].text_span is None
 
 
 # pylint: disable=redefined-outer-name
@@ -369,7 +375,9 @@ def test_skip_prefix() -> None:
 
     result = recognize("run the test", intents)
     assert result is not None
+    assert result.original_text == "run test "
     assert result.entities["test_name"].value == "test"
+    assert result.entities["test_name"].text_span == (4, 8)
 
 
 def test_skip_sorted() -> None:
@@ -1056,8 +1064,10 @@ def test_wildcard() -> None:
     assert set(result.entities.keys()) == {"album", "artist"}
     assert result.entities["album"].value == "The White Album"
     assert result.entities["album"].is_wildcard
+    assert result.entities["album"].text_span == (5, 21)
     assert result.entities["artist"].value == "The Beatles"
     assert result.entities["artist"].is_wildcard
+    assert result.entities["artist"].text_span == (24, 36)
 
     # Wildcards cannot be empty
     sentence = "play by please now"
@@ -1071,8 +1081,10 @@ def test_wildcard() -> None:
     assert set(result.entities.keys()) == {"album", "artist"}
     assert result.entities["album"].value == "the white album"
     assert result.entities["album"].is_wildcard
+    assert result.entities["album"].text_span == (6, 22)
     assert result.entities["artist"].value == "the beatles"
     assert result.entities["artist"].is_wildcard
+    assert result.entities["artist"].text_span == (25, 36)
 
     # Test use of next word in wildcard
     sentence = "play day by day by taken by trees now"
@@ -2189,3 +2201,36 @@ def test_number_word_casing() -> None:
         assert result is not None, number_word
         assert result.entities.keys() == {"volume"}
         assert result.entities["volume"].value == 50
+
+
+def test_wildcard_text_spans() -> None:
+    """Test that text spans accurately capture wildcards."""
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "play [the] {search_query}"
+              - "play [the] {search_query} {media_class}"
+    lists:
+      search_query:
+        wildcard: true
+      media_class:
+        values:
+          - movie
+          - artist
+          - album
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    result = recognize("play the Inception movie", intents)
+    assert result is not None
+    assert result.entities.keys() == {"search_query", "media_class"}
+    assert result.entities["search_query"].text == "Inception"
+    assert result.entities["search_query"].text_span == (9, 19)
+
+    assert result.entities["media_class"].text == "movie"
+    assert result.entities["media_class"].text_span == (19, 24)

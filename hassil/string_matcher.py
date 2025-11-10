@@ -123,6 +123,12 @@ class MatchContext:
     response only.
     """
 
+    original_text: str = ""
+    """Original text for match."""
+
+    text_index: int = 0
+    """Character index from original text."""
+
     def __post_init__(self):
         if self.close_wildcards:
             for entity in self.entities:
@@ -214,11 +220,18 @@ def match_expression(
         else:
             wildcard = context.get_open_wildcard()
             if (wildcard is not None) and (not wildcard.text.strip()):
+                if wildcard.text_span is not None:
+                    wildcard.text_span = (
+                        wildcard.text_span[0],
+                        wildcard.text_span[0] + len(wildcard.text),
+                    )
+
                 if not chunk_text.strip():
                     # Skip space
                     yield MatchContext(
                         text=context_text,
                         is_start_of_word=True,
+                        text_index=context.text_index + len(chunk_text),
                         # Copy over
                         entities=context.entities,
                         intent_context=context.intent_context,
@@ -227,6 +240,7 @@ def match_expression(
                         intent_sentence=context.intent_sentence,
                         intent_data=context.intent_data,
                         captures=context.captures,
+                        original_text=context.original_text,
                     )
                     return
 
@@ -276,8 +290,13 @@ def match_expression(
                                     value=wildcard_text,
                                     is_wildcard=True,
                                     is_wildcard_open=False,  # always close
+                                    text_span=(
+                                        context.text_index,
+                                        context.text_index + len(wildcard_text),
+                                    ),
                                 )
                             ],
+                            text_index=context.text_index + len(wildcard_text),
                             # Copy over
                             intent_context=context.intent_context,
                             unmatched_entities=context.unmatched_entities,
@@ -285,6 +304,7 @@ def match_expression(
                             intent_sentence=context.intent_sentence,
                             intent_data=context.intent_data,
                             captures=context.captures,
+                            original_text=context.original_text,
                         ),
                         expression,
                     )
@@ -311,6 +331,7 @@ def match_expression(
                     # must use chunk.text because it hasn't been stripped
                     is_start_of_word=chunk.text.endswith(" "),
                     text_chunks_matched=text_chunks_matched,
+                    text_index=context.text_index + end_pos,
                     # Copy over
                     entities=context.entities,
                     intent_context=context.intent_context,
@@ -318,6 +339,7 @@ def match_expression(
                     intent_sentence=context.intent_sentence,
                     intent_data=context.intent_data,
                     captures=context.captures,
+                    original_text=context.original_text,
                     #
                     close_wildcards=is_chunk_non_empty,
                     close_unmatched=is_chunk_non_empty,
@@ -338,6 +360,7 @@ def match_expression(
 
                     yield MatchContext(
                         text=context_text,
+                        text_index=context.text_index + end_pos,
                         # Copy over
                         entities=context.entities,
                         intent_context=context.intent_context,
@@ -347,6 +370,7 @@ def match_expression(
                         intent_sentence=context.intent_sentence,
                         intent_data=context.intent_data,
                         captures=context.captures,
+                        original_text=context.original_text,
                         #
                         close_wildcards=is_chunk_non_empty,
                         close_unmatched=is_chunk_non_empty,
@@ -370,10 +394,17 @@ def match_expression(
                                     text=wildcard_text,
                                     is_wildcard=True,
                                     is_wildcard_open=False,  # always close
+                                    text_span=(
+                                        context.text_index,
+                                        context.text_index + len(wildcard_text),
+                                    ),
                                 )
                             )
                             yield MatchContext(
                                 text=context.text[skip_idx + len(chunk_text) :],
+                                text_index=context.text_index
+                                + skip_idx
+                                + len(chunk_text),
                                 # Copy over
                                 # entities=context.entities,
                                 intent_context=context.intent_context,
@@ -383,6 +414,7 @@ def match_expression(
                                 intent_sentence=context.intent_sentence,
                                 intent_data=context.intent_data,
                                 captures=context.captures,
+                                original_text=context.original_text,
                                 #
                                 entities=entities,
                             )
@@ -424,6 +456,7 @@ def match_expression(
 
                             yield MatchContext(
                                 text=context.text[chunk_match.end() :],
+                                text_index=context.text_index + chunk_match.start(),
                                 # Copy over
                                 entities=context.entities,
                                 intent_context=context.intent_context,
@@ -433,6 +466,7 @@ def match_expression(
                                 intent_sentence=context.intent_sentence,
                                 intent_data=context.intent_data,
                                 captures=context.captures,
+                                original_text=context.original_text,
                                 #
                                 unmatched_entities=unmatched_entities,
                             )
@@ -532,6 +566,8 @@ def match_expression(
                             intent_sentence=context.intent_sentence,
                             intent_data=context.intent_data,
                             captures=context.captures,
+                            original_text=context.original_text,
+                            text_index=context.text_index,
                         ),
                         slot_value.text_in,
                     )
@@ -558,6 +594,9 @@ def match_expression(
                             if value_context.text
                             else remaining_text
                         )
+                        entity_start_idx = (
+                            context.text_index + len(context.text) - len(remaining_text)
+                        )
 
                         if list_ref.is_capture:
                             entities = value_context.entities
@@ -575,6 +614,10 @@ def match_expression(
                                     ),
                                     text=entity_text,
                                     metadata=slot_value.metadata,
+                                    text_span=(
+                                        entity_start_idx,
+                                        entity_start_idx + len(entity_text),
+                                    ),
                                 )
                             ]
                             captures = value_context.captures
@@ -595,6 +638,10 @@ def match_expression(
                                 text_chunks_matched=context.text_chunks_matched,
                                 intent_sentence=context.intent_sentence,
                                 intent_data=context.intent_data,
+                                original_text=context.original_text,
+                                text_index=context.text_index
+                                + (len(context.text) - len(value_context.text))
+                                + 1,
                             )
                         else:
                             yield MatchContext(
@@ -608,6 +655,10 @@ def match_expression(
                                 text_chunks_matched=context.text_chunks_matched,
                                 intent_sentence=context.intent_sentence,
                                 intent_data=context.intent_data,
+                                original_text=context.original_text,
+                                text_index=context.text_index
+                                + (len(context.text) - len(value_context.text))
+                                + 1,
                             )
 
                 if (not has_matches) and settings.allow_unmatched_entities:
@@ -622,6 +673,8 @@ def match_expression(
                         intent_sentence=context.intent_sentence,
                         intent_data=context.intent_data,
                         captures=context.captures,
+                        original_text=context.original_text,
+                        text_index=context.text_index,
                         #
                         unmatched_entities=context.unmatched_entities
                         + [UnmatchedTextEntity(name=list_ref.slot_name, text="")],
@@ -685,6 +738,10 @@ def match_expression(
                                     name=list_ref.slot_name,
                                     value=range_value,
                                     text=number_match.group(1),
+                                    text_span=(
+                                        context.text_index + number_match.start(1),
+                                        context.text_index + number_match.end(1),
+                                    ),
                                 )
                             ]
 
@@ -692,6 +749,7 @@ def match_expression(
                                 yield MatchContext(
                                     text=context.text[number_match.end() :],
                                     entities=entities,
+                                    text_index=context.text_index + number_match.end(),
                                     # Copy over
                                     intent_context=context.intent_context,
                                     is_start_of_word=context.is_start_of_word,
@@ -700,6 +758,7 @@ def match_expression(
                                     intent_sentence=context.intent_sentence,
                                     intent_data=context.intent_data,
                                     captures=context.captures,
+                                    original_text=context.original_text,
                                 )
                             else:
                                 # Wildcard consumes text before number
@@ -708,10 +767,16 @@ def match_expression(
                                         : number_match.end() - 1
                                     ]
                                     wildcard.value = wildcard.text
+                                    if wildcard.text_span is not None:
+                                        wildcard.text_span = (
+                                            wildcard.text_span[0],
+                                            wildcard.text_span[0] + len(wildcard.text),
+                                        )
 
                                 yield MatchContext(
                                     text=context.text[number_match.end() :],
                                     entities=entities,
+                                    text_index=context.text_index + number_match.end(),
                                     # Copy over
                                     intent_context=context.intent_context,
                                     is_start_of_word=context.is_start_of_word,
@@ -720,6 +785,7 @@ def match_expression(
                                     intent_sentence=context.intent_sentence,
                                     intent_data=context.intent_data,
                                     captures=context.captures,
+                                    original_text=context.original_text,
                                     #
                                     close_wildcards=True,
                                 )
@@ -735,6 +801,7 @@ def match_expression(
                                 intent_sentence=context.intent_sentence,
                                 intent_data=context.intent_data,
                                 captures=context.captures,
+                                original_text=context.original_text,
                                 #
                                 unmatched_entities=context.unmatched_entities
                                 + [
@@ -742,6 +809,7 @@ def match_expression(
                                         name=list_ref.slot_name, value=word_number
                                     )
                                 ],
+                                text_index=context.text_index + len(number_text),
                             )
 
                 # Only check number words if:
@@ -786,6 +854,10 @@ def match_expression(
                                         name=list_ref.slot_name,
                                         value=range_value,
                                         text=number_text,
+                                        text_span=(
+                                            context.text_index + number_start_pos,
+                                            context.text_index + number_end_pos,
+                                        ),
                                     )
                                 ]
                                 if wildcard is None:
@@ -794,6 +866,8 @@ def match_expression(
                                         MatchContext(
                                             text=context.text,
                                             entities=entities,
+                                            text_index=context.text_index
+                                            + len(number_text),
                                             # Copy over
                                             intent_context=context.intent_context,
                                             is_start_of_word=context.is_start_of_word,
@@ -802,6 +876,7 @@ def match_expression(
                                             intent_sentence=context.intent_sentence,
                                             intent_data=context.intent_data,
                                             captures=context.captures,
+                                            original_text=context.original_text,
                                         ),
                                         TextChunk(number_text),
                                     )
@@ -814,6 +889,8 @@ def match_expression(
                                         MatchContext(
                                             text=context.text[number_start_pos:],
                                             entities=entities,
+                                            text_index=context.text_index
+                                            + number_start_pos,
                                             # Copy over
                                             intent_context=context.intent_context,
                                             is_start_of_word=context.is_start_of_word,
@@ -822,6 +899,7 @@ def match_expression(
                                             intent_sentence=context.intent_sentence,
                                             intent_data=context.intent_data,
                                             captures=context.captures,
+                                            original_text=context.original_text,
                                             #
                                             close_wildcards=True,
                                         ),
@@ -850,6 +928,8 @@ def match_expression(
                         intent_sentence=context.intent_sentence,
                         intent_data=context.intent_data,
                         captures=context.captures,
+                        original_text=context.original_text,
+                        text_index=context.text_index,
                         #
                         unmatched_entities=context.unmatched_entities
                         + [UnmatchedTextEntity(name=list_ref.slot_name, text="")],
@@ -868,6 +948,8 @@ def match_expression(
                     intent_sentence=context.intent_sentence,
                     intent_data=context.intent_data,
                     captures=context.captures,
+                    original_text=context.original_text,
+                    text_index=context.text_index,
                     #
                     entities=context.entities
                     + [
@@ -877,6 +959,7 @@ def match_expression(
                             text="",
                             is_wildcard=True,
                             is_wildcard_end_of_word=list_ref.is_end_of_word,
+                            text_span=(context.text_index, context.text_index + 1),
                         )
                     ],
                     close_unmatched=True,
