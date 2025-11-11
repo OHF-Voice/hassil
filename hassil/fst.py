@@ -151,7 +151,7 @@ class Fst:
         for arc in self.arcs[self.start]:
             # Copy initial weighted intent arc
             output_state = fst_without_spaces.next_edge(
-                fst_without_spaces.start, log_prob=arc.log_prob
+                fst_without_spaces.start, out_label=arc.out_label, log_prob=arc.log_prob
             )
 
             for next_arc_idx, next_arc in enumerate(self.arcs[arc.to_state]):
@@ -568,10 +568,15 @@ def intents_to_fst(
         if intent_names and (intent_name not in intent_names):
             continue
 
+        intent_start_state = fst_with_spaces.next_edge(
+            fst_with_spaces.start, EPS, f"intent:{intent_name}"
+        )
+
         for data in intent.data:
             for sentence in data.sentences:
                 sentence_state = fst_with_spaces.next_edge(
-                    fst_with_spaces.start,
+                    # fst_with_spaces.start,
+                    intent_start_state,
                     SPACE,
                     SPACE,
                 )
