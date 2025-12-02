@@ -3,6 +3,8 @@
 ## 3.5.0
 
 - Add `text_span` to matched entities so they can be mapped back to the original input text
+- Bump dev dependencies
+- Add intent name to initial FST arcs
 
 ## 3.4.1
 
