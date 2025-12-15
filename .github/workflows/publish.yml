@@ -60,7 +60,7 @@ jobs:
         run: python -m build
 
       - name: Upload dists
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: dist
           path: dist/*
@@ -127,7 +127,7 @@ jobs:
           pathlib.Path("RELEASE_NOTES.md").write_text(section, encoding="utf-8")
 
       - name: Upload release notes
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: release-notes
           path: RELEASE_NOTES.md
