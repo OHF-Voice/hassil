@@ -716,8 +716,8 @@ def recognize_best(
     return None
 
 
-def _get_result_score(result: RecognizeResult) -> Tuple[int, int, int]:
-    """Get sort score for a result with (wildcards, -text_matched, wildcard_text).
+def _get_result_score(result: RecognizeResult) -> Tuple[int, int, int, str]:
+    """Get sort score for a result.
 
     Sorted lowest first:
 
@@ -727,12 +727,21 @@ def _get_result_score(result: RecognizeResult) -> Tuple[int, int, int]:
        that binds a word to a concrete list slot instead of letting an adjacent
        wildcard swallow it (e.g. "play track Yesterday" -> media_class="track",
        search_query="Yesterday" rather than search_query="track Yesterday").
+    4. Intent name, as a final tiebreaker for deterministic ordering. Without
+       it, fully-tied results are decided by intent iteration order, which can
+       vary across platforms (e.g. aarch64 vs x86_64).
 
     Note: criterion 3 is 0 for every candidate when none use wildcards, so
-    parses made up entirely of list/range slots keep their original ordering.
+    parses made up entirely of list/range slots keep their original ordering
+    apart from the intent-name tiebreaker.
     """
     num_wildcards = sum(1 for e in result.entities_list if e.is_wildcard)
     wildcard_text_len = sum(
         len(e.text or "") for e in result.entities_list if e.is_wildcard
     )
-    return (num_wildcards, -result.text_chunks_matched, wildcard_text_len)
+    return (
+        num_wildcards,
+        -result.text_chunks_matched,
+        wildcard_text_len,
+        result.intent.name,
+    )
