@@ -646,10 +646,11 @@ def recognize_best(
     return None
 
 
-def _get_result_score(result: RecognizeResult) -> Tuple[int, int]:
-    """Get sort score for a result with (wildcards, -text_matched).
+def _get_result_score(result: RecognizeResult) -> Tuple[int, int, str]:
+    """Get sort score for a result with (wildcards, -text_matched, intent_name).
 
     text_matched is negated since we are sorting with lowest first.
+    intent_name is used as a tiebreaker for deterministic ordering.
     """
     num_wildcards = sum(1 for e in result.entities_list if e.is_wildcard)
-    return (num_wildcards, -result.text_chunks_matched)
+    return (num_wildcards, -result.text_chunks_matched, result.intent.name)
