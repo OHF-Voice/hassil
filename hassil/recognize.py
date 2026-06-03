@@ -4,6 +4,7 @@ import collections.abc
 import itertools
 import logging
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, Dict, Iterable, List, MutableSequence, Optional, Tuple
 
 from .expression import Sentence
@@ -141,17 +142,6 @@ def recognize_all(
     """
     text = normalize_text(remove_punctuation(text)).strip()
 
-    if skip_words is None:
-        skip_words = intents.skip_words
-    else:
-        # Combine skip words
-        skip_words = list(itertools.chain(skip_words, intents.skip_words))
-
-    if skip_words:
-        text = remove_skip_words(text, skip_words, intents.settings.ignore_whitespace)
-
-    text_keywords = text.split()
-
     if slot_lists is None:
         slot_lists = intents.slot_lists
     else:
@@ -166,6 +156,65 @@ def recognize_all(
 
     if intent_context is None:
         intent_context = {}
+
+    do_recognize = partial(
+        _recognize_all,
+        intents=intents,
+        slot_lists=slot_lists,
+        expansion_rules=expansion_rules,
+        intent_context=intent_context,
+        default_response=default_response,
+        allow_unmatched_entities=allow_unmatched_entities,
+        language=language,
+    )
+
+    has_result = False
+    for result in do_recognize(text):
+        has_result = True
+        yield result
+
+    if has_result:
+        return
+
+    # Remove skip words and try again
+    if skip_words is None:
+        skip_words = intents.skip_words
+    else:
+        # Combine skip words
+        skip_words = list(itertools.chain(skip_words, intents.skip_words))
+
+    if not skip_words:
+        return
+
+    text_no_skip_words_start_end = remove_skip_words(
+        text, skip_words, intents.settings.ignore_whitespace, start_end_only=True
+    )
+    if text != text_no_skip_words_start_end:
+        for result in do_recognize(text_no_skip_words_start_end):
+            has_result = True
+            yield result
+
+        if has_result:
+            return
+
+    text_no_skip_words_everywhere = remove_skip_words(
+        text, skip_words, intents.settings.ignore_whitespace, start_end_only=False
+    )
+    if text_no_skip_words_start_end != text_no_skip_words_everywhere:
+        yield from do_recognize(text_no_skip_words_everywhere)
+
+
+def _recognize_all(
+    text: str,
+    intents: Intents,
+    slot_lists: Dict[str, SlotList],
+    expansion_rules: Dict[str, Sentence],
+    intent_context: Dict[str, Any],
+    default_response: Optional[str] = "default",
+    allow_unmatched_entities: bool = False,
+    language: Optional[str] = None,
+) -> Iterable[RecognizeResult]:
+    text_keywords = text.split()
 
     # Filter intents based on context and keywords
     available_intents: MutableSequence[

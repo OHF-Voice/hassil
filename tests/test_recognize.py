@@ -406,6 +406,34 @@ def test_skip_sorted() -> None:
     assert result.entities["test_name"].value == "test"
 
 
+def test_skip_in_wildcards() -> None:
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "broadcast {message}"
+    lists:
+      message:
+        wildcard: true
+    skip_words:
+      - "please"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    result = recognize("broadcast please come upstairs", intents)
+    assert result is not None
+    assert result.entities["message"].value == "please come upstairs"
+
+    # Only the first please should be removed
+    result = recognize("please broadcast please come upstairs", intents)
+    assert result is not None
+    assert result.entities["message"].value == "please come upstairs"
+
+
 def test_response_key() -> None:
     """Check response key in intent data"""
     yaml_text = """
