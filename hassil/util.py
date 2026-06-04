@@ -217,7 +217,7 @@ def remove_skip_words(
         )
     else:
         pattern = re.compile(
-            rf"\s*(?:{skip_words_str})(?=\s|$|[^\w])\s*$",
+            rf"\s*(?<!\w)(?:{skip_words_str})\s*$",
             re.IGNORECASE,
         )
 
