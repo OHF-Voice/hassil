@@ -515,7 +515,17 @@ def match_expression(
         # {list}
         list_ref: ListReference = expression
         if (not settings.slot_lists) or (list_ref.list_name not in settings.slot_lists):
-            raise MissingListError(f"Missing slot list {{{list_ref.list_name}}}")
+            range_parts = list_ref.get_inline_range()
+            if (not list_ref.is_inline_range) or (range_parts is None):
+                raise MissingListError(f"Missing slot list {{{list_ref.list_name}}}")
+
+            # Create range list automatically for {N..M:slot} pattern
+            settings.slot_lists[list_ref.list_name] = RangeSlotList(
+                name=list_ref.list_name,
+                start=range_parts[0],
+                stop=range_parts[1],
+                step=range_parts[2],
+            )
 
         wildcard = context.get_open_wildcard()
         slot_list = settings.slot_lists[list_ref.list_name]

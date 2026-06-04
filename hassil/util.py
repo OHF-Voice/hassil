@@ -168,33 +168,69 @@ def check_excluded_context(
 
 
 def remove_skip_words(
-    text: str, skip_words: Iterable[str], ignore_whitespace: bool
+    text: str,
+    skip_words: Iterable[str],
+    ignore_whitespace: bool,
+    start: bool = True,
+    end: bool = True,
 ) -> str:
     """Remove all skip words from text."""
-    if not skip_words:
+    words = sorted({w.strip() for w in skip_words if w.strip()}, key=len, reverse=True)
+    if not words:
         return text
 
+    skip_words_str = "|".join(re.escape(w) for w in words)
+
     if ignore_whitespace:
-        skip_words_pattern = re.compile(
-            r"("
-            + "|".join(
-                re.escape(w.strip()) for w in sorted(skip_words, key=len, reverse=True)
-            )
-            + r")",
+        pattern = re.compile(rf"(?:{skip_words_str})", re.IGNORECASE)
+        if start and end:
+            return pattern.sub("", text)
+
+        if start:
+            pattern = re.compile(rf"^(?:{skip_words_str})", re.IGNORECASE)
+        else:
+            pattern = re.compile(rf"(?:{skip_words_str})$", re.IGNORECASE)
+
+        while True:
+            new_text = pattern.sub("", text)
+            if new_text == text:
+                break
+            text = new_text
+
+        return text
+
+    # Whitespace-sensitive mode.
+    if start and end:
+        # Remove skip words anywhere, but only as separated words/phrases.
+        pattern = re.compile(
+            rf"(?<!\w)(?:{skip_words_str})(?!\w)",
             re.IGNORECASE,
         )
-        return skip_words_pattern.sub("", text)
 
-    skip_words_pattern = re.compile(
-        r"(?<=\W)("
-        + "|".join(
-            re.escape(w.strip()) for w in sorted(skip_words, key=len, reverse=True)
+        text = pattern.sub(" ", text)
+        return normalize_whitespace(text).strip()
+
+    if start:
+        pattern = re.compile(
+            rf"^\s*(?:{skip_words_str})(?=\s|$|[^\w])\s*",
+            re.IGNORECASE,
         )
-        + r")(?=\W)",
-        re.IGNORECASE,
-    )
-    text = skip_words_pattern.sub(" ", f" {text} ").strip()
-    return normalize_whitespace(text)
+    else:
+        pattern = re.compile(
+            rf"\s*(?:{skip_words_str})(?=\s|$|[^\w])\s*$",
+            re.IGNORECASE,
+        )
+
+    while True:
+        new_text = pattern.sub("", text)
+        new_text = normalize_whitespace(new_text).strip()
+
+        if new_text == text:
+            break
+
+        text = new_text
+
+    return text
 
 
 def remove_punctuation(text: str) -> str:

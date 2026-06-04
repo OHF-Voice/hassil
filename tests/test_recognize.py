@@ -375,7 +375,7 @@ def test_skip_prefix() -> None:
 
     result = recognize("run the test", intents)
     assert result is not None
-    assert result.original_text == "run test "
+    assert result.original_text == "run the test"
     assert result.entities["test_name"].value == "test"
     assert result.entities["test_name"].text_span == (4, 8)
 
@@ -404,6 +404,90 @@ def test_skip_sorted() -> None:
     result = recognize("could you run test", intents)
     assert result is not None
     assert result.entities["test_name"].value == "test"
+
+
+def test_skip_in_wildcard_start() -> None:
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "{message} broadcast"
+    lists:
+      message:
+        wildcard: true
+    skip_words:
+      - "please"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    result = recognize("please come upstairs broadcast", intents)
+    assert result is not None
+    assert result.entities["message"].value == "please come upstairs"
+
+    # Only the first please should be removed
+    result = recognize("please come upstairs broadcast please", intents)
+    assert result is not None
+    assert result.entities["message"].value == "please come upstairs"
+
+
+def test_skip_in_wildcard_end() -> None:
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "broadcast {message}"
+    lists:
+      message:
+        wildcard: true
+    skip_words:
+      - "please"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    result = recognize("broadcast please come upstairs", intents)
+    assert result is not None
+    assert result.entities["message"].value == "please come upstairs"
+
+    # Only the first please should be removed
+    result = recognize("please broadcast please come upstairs", intents)
+    assert result is not None
+    assert result.entities["message"].value == "please come upstairs"
+
+
+def test_skip_all_wildcard() -> None:
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "{message}"
+    lists:
+      message:
+        wildcard: true
+    skip_words:
+      - "please"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    # No skip words should be removed
+    result = recognize("please come upstairs", intents)
+    assert result is not None
+    assert result.entities["message"].value == "please come upstairs"
+
+    result = recognize("come upstairs please", intents)
+    assert result is not None
+    assert result.entities["message"].value == "come upstairs please"
 
 
 def test_response_key() -> None:
@@ -2234,3 +2318,37 @@ def test_wildcard_text_spans() -> None:
 
     assert result.entities["media_class"].text == "movie"
     assert result.entities["media_class"].text_span == (19, 24)
+
+
+def test_inline_range_lists() -> None:
+    """Test that inline range lists word ({N..M:slot})."""
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "set brightness to {0..100:brightness}"
+              - "set position to {0..100:position}"
+              - "start timer for {10..100,10:seconds} seconds"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    result = recognize("set brightness to 50", intents)
+    assert result is not None
+    assert result.entities.keys() == {"brightness"}
+    assert result.entities["brightness"].value == 50
+
+    result = recognize("set position to 25", intents)
+    assert result is not None
+    assert result.entities.keys() == {"position"}
+    assert result.entities["position"].value == 25
+
+    # Check step
+    assert recognize("start timer for 10 seconds", intents) is not None
+    assert recognize("start timer for 11 seconds", intents) is None
+
+    # Range list is only created during matching
+    assert not intents.slot_lists

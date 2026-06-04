@@ -149,3 +149,31 @@ expansion_rules:
 skip_words:
   - "<word>"
 ```
+
+### Inline Range Lists
+
+Within a sentence template, you can create a range list inline with the format `{start..end,[step]:slot_name}`. For example:
+
+``` yaml
+language: "en"
+intents:
+  SetBrightness:
+    data:
+      - sentences:
+          - "set brightness to {0..100:brightness}"
+```
+
+During matching, a range list from 0 to 100 will be available and its value will be stored in the `brightness` slot.
+
+An optional step can be used as well:
+
+``` yaml
+language: "en"
+intents:
+  StartTimer:
+    data:
+      - sentences:
+          - "start timer for {10..100,10:seconds} seconds"
+```
+
+This range list goes from 10 to 100 in steps of 10, so the sentence "start timer for 11 seconds" will not be recognized.
