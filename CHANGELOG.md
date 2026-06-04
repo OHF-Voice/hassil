@@ -2,6 +2,7 @@
 
 ## 3.6.0
 
+- Add inline range lists (`{start..stop,[step]:slot_name}`)
 - Don't remove skip words from start if sentence starts with a wildcard
 - Don't remove skip words from end if sentence ends with a wildcard
 - Don't remove skip words at all if the entire sentence is a wildcard
