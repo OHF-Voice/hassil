@@ -7,6 +7,8 @@ from abc import ABC
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
+INLINE_RANGE_PATTERN = re.compile(r"^(\d+)..(\d+)(?:,(\d+))?$")
+
 
 @dataclass
 class Expression(ABC):
@@ -137,6 +139,7 @@ class ListReference(Expression):
     is_end_of_word: bool = True
     is_capture: bool = False
     _slot_name: Optional[str] = None
+    _inline_range_match: Optional[re.Match] = None
 
     def __post_init__(self):
         if ":" in self.list_name:
@@ -146,6 +149,8 @@ class ListReference(Expression):
                 # Capture (only available in response)
                 self.is_capture = True
                 self._slot_name = self._slot_name[1:]
+
+            self._inline_range_match = INLINE_RANGE_PATTERN.match(self.list_name)
         elif self.list_name.startswith("@"):
             # Compact capture syntax
             # {@x} is the same as {x:@x}
@@ -160,6 +165,17 @@ class ListReference(Expression):
         """Name of slot to put list value into."""
         assert self._slot_name is not None
         return self._slot_name
+
+    @property
+    def is_inline_range(self) -> bool:
+        return self._inline_range_match is not None
+
+    def get_inline_range(self) -> Optional[Tuple[int, int, int]]:
+        if not self._inline_range_match:
+            return None
+
+        start, stop, step = self._inline_range_match.groups()
+        return (int(start), int(stop), 1 if step is None else int(step))
 
 
 @dataclass

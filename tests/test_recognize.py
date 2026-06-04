@@ -461,6 +461,7 @@ def test_skip_in_wildcard_end() -> None:
     assert result is not None
     assert result.entities["message"].value == "please come upstairs"
 
+
 def test_skip_all_wildcard() -> None:
     yaml_text = """
     language: "en"
@@ -2317,3 +2318,37 @@ def test_wildcard_text_spans() -> None:
 
     assert result.entities["media_class"].text == "movie"
     assert result.entities["media_class"].text_span == (19, 24)
+
+
+def test_inline_range_lists() -> None:
+    """Test that inline range lists word ({N..M:slot})."""
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "set brightness to {0..100:brightness}"
+              - "set position to {0..100:position}"
+              - "start timer for {10..100,10:seconds} seconds"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    result = recognize("set brightness to 50", intents)
+    assert result is not None
+    assert result.entities.keys() == {"brightness"}
+    assert result.entities["brightness"].value == 50
+
+    result = recognize("set position to 25", intents)
+    assert result is not None
+    assert result.entities.keys() == {"position"}
+    assert result.entities["position"].value == 25
+
+    # Check step
+    assert recognize("start timer for 10 seconds", intents) is not None
+    assert recognize("start timer for 11 seconds", intents) is None
+
+    # Range list is only created during matching
+    assert not intents.slot_lists
