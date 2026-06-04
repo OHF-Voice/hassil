@@ -375,7 +375,7 @@ def test_skip_prefix() -> None:
 
     result = recognize("run the test", intents)
     assert result is not None
-    assert result.original_text == "run test "
+    assert result.original_text == "run the test"
     assert result.entities["test_name"].value == "test"
     assert result.entities["test_name"].text_span == (4, 8)
 
@@ -406,7 +406,35 @@ def test_skip_sorted() -> None:
     assert result.entities["test_name"].value == "test"
 
 
-def test_skip_in_wildcards() -> None:
+def test_skip_in_wildcard_start() -> None:
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "{message} broadcast"
+    lists:
+      message:
+        wildcard: true
+    skip_words:
+      - "please"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    result = recognize("please come upstairs broadcast", intents)
+    assert result is not None
+    assert result.entities["message"].value == "please come upstairs"
+
+    # Only the first please should be removed
+    result = recognize("please come upstairs broadcast please", intents)
+    assert result is not None
+    assert result.entities["message"].value == "please come upstairs"
+
+
+def test_skip_in_wildcard_end() -> None:
     yaml_text = """
     language: "en"
     intents:
@@ -432,6 +460,33 @@ def test_skip_in_wildcards() -> None:
     result = recognize("please broadcast please come upstairs", intents)
     assert result is not None
     assert result.entities["message"].value == "please come upstairs"
+
+def test_skip_all_wildcard() -> None:
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "{message}"
+    lists:
+      message:
+        wildcard: true
+    skip_words:
+      - "please"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    # No skip words should be removed
+    result = recognize("please come upstairs", intents)
+    assert result is not None
+    assert result.entities["message"].value == "please come upstairs"
+
+    result = recognize("come upstairs please", intents)
+    assert result is not None
+    assert result.entities["message"].value == "come upstairs please"
 
 
 def test_response_key() -> None:

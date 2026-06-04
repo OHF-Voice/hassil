@@ -4,11 +4,10 @@ import collections.abc
 import itertools
 import logging
 from dataclasses import dataclass, field
-from functools import partial
 from typing import Any, Dict, Iterable, List, MutableSequence, Optional, Tuple
 
-from .expression import Sentence
-from .intents import Intent, IntentData, Intents, SlotList
+from .expression import Expression, ListReference, Sentence, Sequence
+from .intents import Intent, IntentData, Intents, SlotList, WildcardSlotList
 from .models import MatchCapture, MatchEntity, UnmatchedEntity, UnmatchedTextEntity
 from .string_matcher import MatchContext, MatchSettings, match_expression
 from .util import (
@@ -140,7 +139,22 @@ def recognize_all(
     Yields results as they're matched.
     If allow_unmatched_entities is True, you should check for unmatched entities.
     """
-    text = normalize_text(remove_punctuation(text)).strip()
+    text_with_skip_words = normalize_text(remove_punctuation(text)).strip()
+
+    if skip_words is None:
+        skip_words = intents.skip_words
+    else:
+        # Combine skip words
+        skip_words = list(itertools.chain(skip_words, intents.skip_words))
+
+    if skip_words:
+        text_no_skip_words = remove_skip_words(
+            text_with_skip_words, skip_words, intents.settings.ignore_whitespace
+        )
+    else:
+        text_no_skip_words = text_with_skip_words
+
+    text_keywords = text_no_skip_words.split()
 
     if slot_lists is None:
         slot_lists = intents.slot_lists
@@ -156,65 +170,6 @@ def recognize_all(
 
     if intent_context is None:
         intent_context = {}
-
-    do_recognize = partial(
-        _recognize_all,
-        intents=intents,
-        slot_lists=slot_lists,
-        expansion_rules=expansion_rules,
-        intent_context=intent_context,
-        default_response=default_response,
-        allow_unmatched_entities=allow_unmatched_entities,
-        language=language,
-    )
-
-    has_result = False
-    for result in do_recognize(text):
-        has_result = True
-        yield result
-
-    if has_result:
-        return
-
-    # Remove skip words and try again
-    if skip_words is None:
-        skip_words = intents.skip_words
-    else:
-        # Combine skip words
-        skip_words = list(itertools.chain(skip_words, intents.skip_words))
-
-    if not skip_words:
-        return
-
-    text_no_skip_words_start_end = remove_skip_words(
-        text, skip_words, intents.settings.ignore_whitespace, start_end_only=True
-    )
-    if text != text_no_skip_words_start_end:
-        for result in do_recognize(text_no_skip_words_start_end):
-            has_result = True
-            yield result
-
-        if has_result:
-            return
-
-    text_no_skip_words_everywhere = remove_skip_words(
-        text, skip_words, intents.settings.ignore_whitespace, start_end_only=False
-    )
-    if text_no_skip_words_start_end != text_no_skip_words_everywhere:
-        yield from do_recognize(text_no_skip_words_everywhere)
-
-
-def _recognize_all(
-    text: str,
-    intents: Intents,
-    slot_lists: Dict[str, SlotList],
-    expansion_rules: Dict[str, Sentence],
-    intent_context: Dict[str, Any],
-    default_response: Optional[str] = "default",
-    allow_unmatched_entities: bool = False,
-    language: Optional[str] = None,
-) -> Iterable[RecognizeResult]:
-    text_keywords = text.split()
 
     # Filter intents based on context and keywords
     available_intents: MutableSequence[
@@ -286,7 +241,7 @@ def _recognize_all(
                 intent_sentence.compile(match_settings.expansion_rules)
                 assert intent_sentence.pattern is not None
 
-                regex_match = intent_sentence.pattern.match(text)
+                regex_match = intent_sentence.pattern.match(text_no_skip_words)
                 if regex_match is not None:
                     matching_intent_sentences.append(intent_sentence)
 
@@ -300,10 +255,18 @@ def _recognize_all(
 
     # Fall back to string matcher
     if intents.settings.ignore_whitespace:
-        text = WHITESPACE.sub("", text)
+        text_no_skip_words = WHITESPACE.sub("", text_no_skip_words)
     else:
         # Artifical word boundary
-        text += " "
+        text_no_skip_words += " "
+
+    text_with_skip_words_at_start: Optional[str] = None
+    text_with_skip_words_at_end: Optional[str] = None
+
+    def is_wildcard(e: Expression) -> bool:
+        return isinstance(e, ListReference) and isinstance(
+            slot_lists.get(e.list_name), WildcardSlotList
+        )
 
     for intent, intent_data, match_settings, intent_sentences in available_intents:
         if not intent_sentences:
@@ -311,9 +274,49 @@ def _recognize_all(
 
         # Check each sentence template
         for intent_sentence in intent_sentences:
+            match_text = text_no_skip_words
+            if isinstance(intent_sentence.expression, Sequence):
+                seq: Sequence = intent_sentence.expression
+                if (len(seq.items) == 1) and is_wildcard(seq.items[0]):
+                    # Entire sentence is a wild card
+                    match_text = text_with_skip_words
+                elif len(seq.items) > 1:
+                    if is_wildcard(seq.items[0]):
+                        # Starts with a wildcard
+                        if text_with_skip_words_at_end is None:
+                            text_with_skip_words_at_end = remove_skip_words(
+                                text_with_skip_words,
+                                skip_words,
+                                intents.settings.ignore_whitespace,
+                                start=False,
+                            )
+                            if intents.settings.ignore_whitespace:
+                                text_with_skip_words_at_end = WHITESPACE.sub(
+                                    "", text_with_skip_words_at_end
+                                )
+                            else:
+                                text_with_skip_words_at_end += " "
+                        match_text = text_with_skip_words_at_end
+                    elif is_wildcard(seq.items[-1]):
+                        # Ends with a wildcard
+                        if text_with_skip_words_at_start is None:
+                            text_with_skip_words_at_start = remove_skip_words(
+                                text_with_skip_words,
+                                skip_words,
+                                intents.settings.ignore_whitespace,
+                                end=False,
+                            )
+                            if intents.settings.ignore_whitespace:
+                                text_with_skip_words_at_start = WHITESPACE.sub(
+                                    "", text_with_skip_words_at_start
+                                )
+                            else:
+                                text_with_skip_words_at_start += " "
+                        match_text = text_with_skip_words_at_start
+
             # Create initial context
             match_context = MatchContext(
-                text=text,
+                text=match_text,
                 intent_context=intent_context,
                 intent_sentence=intent_sentence,
                 intent_data=intent_data,

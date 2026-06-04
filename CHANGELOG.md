@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.6.0
+
+- Don't remove skip words from start if sentence starts with a wildcard
+- Don't remove skip words from end if sentence ends with a wildcard
+- Don't remove skip words at all if the entire sentence is a wildcard
+
 ## 3.5.0
 
 - Add `text_span` to matched entities so they can be mapped back to the original input text
