@@ -490,6 +490,25 @@ def test_skip_all_wildcard() -> None:
     assert result.entities["message"].value == "come upstairs please"
 
 
+def test_dont_skip_real_text() -> None:
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "I want to watch TV"
+    skip_words:
+      - "I want"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    result = recognize("I want to watch TV", intents)
+    assert result is not None
+
+
 def test_response_key() -> None:
     """Check response key in intent data"""
     yaml_text = """
