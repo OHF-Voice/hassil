@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.7.1
+
+- Cache regex in match utils
+
 ## 3.7.0
 
 - Try text without skip words removed first

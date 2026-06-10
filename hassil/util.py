@@ -9,6 +9,7 @@ from collections.abc import (
     MutableSequence,
     Sequence,
 )
+from functools import lru_cache
 from typing import Any, Dict, Iterable, Optional
 
 WHITESPACE = re.compile(r"\s+")
@@ -249,9 +250,15 @@ def remove_punctuation(text: str) -> str:
     return text
 
 
+@lru_cache(maxsize=8192)
+def _compiled_prefix(prefix: str, boundary: str) -> "re.Pattern[str]":
+    """Cache the compiled prefix pattern to avoid re-escaping/re-compiling per match."""
+    return re.compile(rf"{boundary}{re.escape(prefix)}", re.IGNORECASE)
+
+
 def match_start(text: str, prefix: str) -> Optional[int]:
     """Match prefix at start of text and return end of match position."""
-    match = re.match(rf"^{re.escape(prefix)}", text, re.IGNORECASE)
+    match = _compiled_prefix(prefix, "^").match(text)
     if match is None:
         return None
 
@@ -265,12 +272,9 @@ def match_first(
     if start_idx > 0:
         text = text[start_idx:]
 
-    if start_of_word:
-        boundary = r"\b"
-    else:
-        boundary = ""
+    boundary = r"\b" if start_of_word else ""
 
-    match = re.search(rf"{boundary}{re.escape(prefix)}", text, re.IGNORECASE)
+    match = _compiled_prefix(prefix, boundary).search(text)
     if match is None:
         return -1
 
