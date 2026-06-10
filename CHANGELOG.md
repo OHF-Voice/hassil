@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.7.0
+
+- Try text without skip words removed first
+
 ## 3.6.0
 
 - Add inline range lists (`{start..stop,[step]:slot_name}`)

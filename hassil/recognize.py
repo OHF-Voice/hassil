@@ -154,6 +154,11 @@ def recognize_all(
     else:
         text_no_skip_words = text_with_skip_words
 
+    # True if removing skip words actually changed the text. When it did, a skip
+    # word might really be part of a sentence template (e.g. "I want" in
+    # "I want to watch TV"), so we also try matching with skip words left in.
+    had_skip_words_removed = text_no_skip_words != text_with_skip_words
+
     text_keywords = text_no_skip_words.split()
 
     if slot_lists is None:
@@ -256,9 +261,11 @@ def recognize_all(
     # Fall back to string matcher
     if intents.settings.ignore_whitespace:
         text_no_skip_words = WHITESPACE.sub("", text_no_skip_words)
+        text_with_skip_words_matchable = WHITESPACE.sub("", text_with_skip_words)
     else:
         # Artifical word boundary
         text_no_skip_words += " "
+        text_with_skip_words_matchable = text_with_skip_words + " "
 
     text_with_skip_words_at_start: Optional[str] = None
     text_with_skip_words_at_end: Optional[str] = None
@@ -314,24 +321,35 @@ def recognize_all(
                                 text_with_skip_words_at_start += " "
                         match_text = text_with_skip_words_at_start
 
-            # Create initial context
-            match_context = MatchContext(
-                text=match_text,
-                intent_context=intent_context,
-                intent_sentence=intent_sentence,
-                intent_data=intent_data,
-                original_text=text,
-            )
-            maybe_match_contexts = match_expression(
-                match_settings, match_context, intent_sentence.expression
-            )
-            yield from _process_match_contexts(
-                maybe_match_contexts,
-                intent,
-                intent_data,
-                default_response=default_response,
-                allow_unmatched_entities=allow_unmatched_entities,
-            )
+            # Text(s) to attempt matching against.
+            match_texts = [match_text]
+            if had_skip_words_removed and (match_text == text_no_skip_words):
+                # A skip word may actually be part of this (non-wildcard)
+                # template, so try matching with skip words left in *first*.
+                # The literal interpretation (what the user actually said) is
+                # preferred over the one where words were dropped as filler.
+                # Wildcard sentences already keep skip words where appropriate.
+                match_texts.insert(0, text_with_skip_words_matchable)
+
+            for candidate_text in match_texts:
+                # Create initial context
+                match_context = MatchContext(
+                    text=candidate_text,
+                    intent_context=intent_context,
+                    intent_sentence=intent_sentence,
+                    intent_data=intent_data,
+                    original_text=text,
+                )
+                maybe_match_contexts = match_expression(
+                    match_settings, match_context, intent_sentence.expression
+                )
+                yield from _process_match_contexts(
+                    maybe_match_contexts,
+                    intent,
+                    intent_data,
+                    default_response=default_response,
+                    allow_unmatched_entities=allow_unmatched_entities,
+                )
 
 
 def _process_match_contexts(
