@@ -716,10 +716,23 @@ def recognize_best(
     return None
 
 
-def _get_result_score(result: RecognizeResult) -> Tuple[int, int]:
-    """Get sort score for a result with (wildcards, -text_matched).
+def _get_result_score(result: RecognizeResult) -> Tuple[int, int, int]:
+    """Get sort score for a result with (wildcards, -text_matched, wildcard_text).
 
-    text_matched is negated since we are sorting with lowest first.
+    Sorted lowest first:
+
+    1. Fewer wildcards.
+    2. More literal text matched (negated).
+    3. Less text captured by wildcards. This breaks ties in favor of the parse
+       that binds a word to a concrete list slot instead of letting an adjacent
+       wildcard swallow it (e.g. "play track Yesterday" -> media_class="track",
+       search_query="Yesterday" rather than search_query="track Yesterday").
+
+    Note: criterion 3 is 0 for every candidate when none use wildcards, so
+    parses made up entirely of list/range slots keep their original ordering.
     """
     num_wildcards = sum(1 for e in result.entities_list if e.is_wildcard)
-    return (num_wildcards, -result.text_chunks_matched)
+    wildcard_text_len = sum(
+        len(e.text or "") for e in result.entities_list if e.is_wildcard
+    )
+    return (num_wildcards, -result.text_chunks_matched, wildcard_text_len)

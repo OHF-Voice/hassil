@@ -1,8 +1,9 @@
 # Changelog
 
-## 3.7.1
+## 3.8.0
 
 - Cache regex in match utils
+- Break ties in `recognize_best` in favor of list values versus wildcards
 
 ## 3.7.0
 
