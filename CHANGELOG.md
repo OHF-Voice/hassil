@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.8.1
+
+- Fix trailing initialisms
+
 ## 3.8.0
 
 - Cache regex in match utils
