@@ -42,6 +42,9 @@ def test_remove_punctuation():
     assert remove_punctuation("A.C.") == "A.C."
     assert remove_punctuation("A.C") == "A.C"
     assert remove_punctuation("turn A.C. off") == "turn A.C. off"
+    # A trailing initialism is preserved even after other words, matching the
+    # standalone case ("A.C." above) so input/slot normalization stays in sync.
+    assert remove_punctuation("turn off A.C.") == "turn off A.C."
     assert remove_punctuation("Main St. next") == "Main St next"
     assert remove_punctuation("Chambre d'Ariane") == "Chambre d'Ariane"
     assert remove_punctuation("Chambre d’Ariane") == "Chambre d’Ariane"

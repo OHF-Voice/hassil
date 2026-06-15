@@ -142,6 +142,27 @@ def test_turn_on(intents, slot_lists):
     assert result.entities["name"].value == "roku"
 
 
+def test_name_with_trailing_initialism():
+    """A name ending in an initialism matches at the end of a sentence."""
+    yaml_text = """
+language: "en"
+intents:
+  TurnOff:
+    data:
+      - sentences:
+          - "turn off {name}"
+"""
+    with io.StringIO(yaml_text) as yaml_file:
+        intents = Intents.from_yaml(yaml_file)
+
+    slot_lists = {"name": TextSlotList.from_tuples([("A.C.", "climate.ac")])}
+
+    for text in ("turn off A.C.", "turn off a.c."):
+        result = recognize(text, intents, slot_lists=slot_lists)
+        assert result is not None, text
+        assert result.entities["name"].value == "climate.ac"
+
+
 # pylint: disable=redefined-outer-name
 def test_brightness_area(intents, slot_lists):
     result = recognize(

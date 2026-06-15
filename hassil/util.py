@@ -238,8 +238,10 @@ def remove_punctuation(text: str) -> str:
     """Remove punctuation from start/end of words and entire text."""
     text = PUNCTUATION_START.sub("", text)
 
-    if not INITIALISM_DOTS_AT_END.match(text):
-        # Don't remove final "." from "A.C.", etc.
+    if not INITIALISM_DOTS_AT_END.search(text):
+        # Don't remove final "." from "A.C.", etc. Use search (not match) so a
+        # trailing initialism is preserved even at the end of a longer string,
+        # keeping normalization consistent with a standalone initialism.
         text = PUNCTUATION_END.sub("", text)
 
     text = PUNCTUATION_START_WORD.sub("", text)

@@ -253,7 +253,7 @@ def test_timer_status(matcher: FuzzyNgramMatcher) -> None:
 
 def test_wrong_vocab(matcher: FuzzyNgramMatcher) -> None:
     assert not matcher.match("open office lights")
-    assert not matcher.match("close A.C.")
+    assert not matcher.match("turn off the oven")
     assert not matcher.match("garage door off")
 
     # Front Door is a lock, not a cover
