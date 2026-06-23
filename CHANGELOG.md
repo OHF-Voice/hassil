@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.8.2
+
+- Fix text span with range numbers
+
 ## 3.8.1
 
 - Fix trailing initialisms

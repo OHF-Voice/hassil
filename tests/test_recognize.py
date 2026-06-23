@@ -2360,6 +2360,54 @@ def test_wildcard_text_spans() -> None:
     assert result.entities["media_class"].text_span == (19, 24)
 
 
+def test_text_spans_after_range_numbers() -> None:
+    """Text spans of slots that follow a range number must stay aligned.
+
+    A range number match leaves a leading space before the next chunk; that
+    space must be counted in text_index, otherwise every following slot's span
+    drifts left by one per preceding number.
+    """
+    yaml_text = """
+    language: "en"
+    intents:
+      SetTimer:
+        data:
+          - sentences:
+              - "{minutes} minutes {seconds} seconds timer named {name}"
+    lists:
+      minutes:
+        range:
+          from: 0
+          to: 100
+      seconds:
+        range:
+          from: 0
+          to: 100
+      name:
+        wildcard: true
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    text = "5 minutes 30 seconds timer named pizza"
+    result = recognize(text, intents)
+    assert result is not None
+    assert result.entities.keys() == {"minutes", "seconds", "name"}
+
+    for slot_name, expected in (
+        ("minutes", "5"),
+        ("seconds", "30"),
+        ("name", "pizza"),
+    ):
+        entity = result.entities[slot_name]
+        span = entity.text_span
+        assert span is not None
+        # The span must point at exactly the matched text in the original.
+        assert text[span[0] : span[1]] == expected, slot_name
+        assert entity.text == expected
+
+
 def test_inline_range_lists() -> None:
     """Test that inline range lists word ({N..M:slot})."""
     yaml_text = """

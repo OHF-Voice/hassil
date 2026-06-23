@@ -190,6 +190,13 @@ def match_expression(
     if isinstance(expression, TextChunk):
         chunk: TextChunk = expression
 
+        # Number of leading whitespace characters skipped below. These are real
+        # characters consumed from the original text, so text_index (and any
+        # entity text_span derived from it) must advance past them. Forgetting
+        # this makes spans drift left by one per skipped gap (e.g. after a range
+        # number match, which leaves a leading space before the next chunk).
+        leading_ws = 0
+
         if settings.ignore_whitespace:
             # Remove all whitespace
             chunk_text = WHITESPACE.sub("", chunk.text)
@@ -203,7 +210,12 @@ def match_expression(
                 # Ignore extra whitespace at the beginning of chunk and text
                 # since we know we're at the start of a word.
                 chunk_text = chunk_text.lstrip()
-                context_text = context_text.lstrip()
+                stripped_context_text = context_text.lstrip()
+                leading_ws = len(context_text) - len(stripped_context_text)
+                context_text = stripped_context_text
+
+        # Position in the original text of the (whitespace-stripped) context_text.
+        base_index = context.text_index + leading_ws
 
         # True if remaining text to be matched is empty or whitespace.
         #
@@ -231,7 +243,7 @@ def match_expression(
                     yield MatchContext(
                         text=context_text,
                         is_start_of_word=True,
-                        text_index=context.text_index + len(chunk_text),
+                        text_index=base_index + len(chunk_text),
                         # Copy over
                         entities=context.entities,
                         intent_context=context.intent_context,
@@ -291,12 +303,12 @@ def match_expression(
                                     is_wildcard=True,
                                     is_wildcard_open=False,  # always close
                                     text_span=(
-                                        context.text_index,
-                                        context.text_index + len(wildcard_text),
+                                        base_index,
+                                        base_index + len(wildcard_text),
                                     ),
                                 )
                             ],
-                            text_index=context.text_index + len(wildcard_text),
+                            text_index=base_index + len(wildcard_text),
                             # Copy over
                             intent_context=context.intent_context,
                             unmatched_entities=context.unmatched_entities,
@@ -331,7 +343,7 @@ def match_expression(
                     # must use chunk.text because it hasn't been stripped
                     is_start_of_word=chunk.text.endswith(" "),
                     text_chunks_matched=text_chunks_matched,
-                    text_index=context.text_index + end_pos,
+                    text_index=base_index + end_pos,
                     # Copy over
                     entities=context.entities,
                     intent_context=context.intent_context,
@@ -360,7 +372,7 @@ def match_expression(
 
                     yield MatchContext(
                         text=context_text,
-                        text_index=context.text_index + end_pos,
+                        text_index=base_index + end_pos,
                         # Copy over
                         entities=context.entities,
                         intent_context=context.intent_context,
@@ -395,16 +407,14 @@ def match_expression(
                                     is_wildcard=True,
                                     is_wildcard_open=False,  # always close
                                     text_span=(
-                                        context.text_index,
-                                        context.text_index + len(wildcard_text),
+                                        base_index,
+                                        base_index + len(wildcard_text),
                                     ),
                                 )
                             )
                             yield MatchContext(
-                                text=context.text[skip_idx + len(chunk_text) :],
-                                text_index=context.text_index
-                                + skip_idx
-                                + len(chunk_text),
+                                text=context_text[skip_idx + len(chunk_text) :],
+                                text_index=base_index + skip_idx + len(chunk_text),
                                 # Copy over
                                 # entities=context.entities,
                                 intent_context=context.intent_context,
@@ -455,8 +465,8 @@ def match_expression(
                             )
 
                             yield MatchContext(
-                                text=context.text[chunk_match.end() :],
-                                text_index=context.text_index + chunk_match.start(),
+                                text=context_text[chunk_match.end() :],
+                                text_index=base_index + chunk_match.start(),
                                 # Copy over
                                 entities=context.entities,
                                 intent_context=context.intent_context,
@@ -650,8 +660,7 @@ def match_expression(
                                 intent_data=context.intent_data,
                                 original_text=context.original_text,
                                 text_index=context.text_index
-                                + (len(context.text) - len(value_context.text))
-                                + 1,
+                                + (len(context.text) - len(value_context.text)),
                             )
                         else:
                             yield MatchContext(
@@ -667,8 +676,7 @@ def match_expression(
                                 intent_data=context.intent_data,
                                 original_text=context.original_text,
                                 text_index=context.text_index
-                                + (len(context.text) - len(value_context.text))
-                                + 1,
+                                + (len(context.text) - len(value_context.text)),
                             )
 
                 if (not has_matches) and settings.allow_unmatched_entities:
