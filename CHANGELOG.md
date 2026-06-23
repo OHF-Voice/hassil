@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.9.0
+
+- Remove ngram fuzzy matcher
+
 ## 3.8.2
 
 - Fix text span with range numbers
