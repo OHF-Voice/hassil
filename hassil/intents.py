@@ -228,8 +228,42 @@ class IntentData:
     required_keywords: Optional[Set[str]] = None
     """Keywords that must be present for any sentence to match."""
 
+    inferred_domain: Optional[str] = None
+    """Domain inferred for nameless group commands (e.g., "light" for "turn on the lights")."""
+
+    name_domains: Optional[Set[str]] = None
+    """Domains that names referenced in this block may resolve to."""
+
     settings: IntentDataSettings = field(default_factory=IntentDataSettings)
     """Settings for block of sentences."""
+
+    @property
+    def domains(self) -> Set[str]:
+        """Set of entity domains this block of sentences can apply to.
+
+        Combines (in order of appearance):
+        - ``inferred_domain`` (nameless group commands)
+        - ``name_domains`` (domains that ``{name}`` may resolve to)
+        - a ``domain`` value in ``slots`` or ``requires_context``
+
+        An empty set means the block is not scoped to any particular domain.
+        """
+        result: Set[str] = set()
+
+        if self.inferred_domain:
+            result.add(self.inferred_domain)
+
+        if self.name_domains:
+            result.update(self.name_domains)
+
+        for source in (self.slots, self.requires_context):
+            domain_value = source.get("domain")
+            if isinstance(domain_value, str):
+                result.add(domain_value)
+            elif isinstance(domain_value, (list, set, tuple)):
+                result.update(domain_value)
+
+        return result
 
     @cached_property
     def sentences(self) -> List[Sentence]:
@@ -383,6 +417,12 @@ class Intents:
                             required_keywords=(
                                 set(data_dict["required_keywords"])
                                 if "required_keywords" in data_dict
+                                else None
+                            ),
+                            inferred_domain=data_dict.get("inferred_domain"),
+                            name_domains=(
+                                set(data_dict["name_domains"])
+                                if "name_domains" in data_dict
                                 else None
                             ),
                             settings=_parse_data_settings(

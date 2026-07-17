@@ -11,6 +11,7 @@ from .expression import (
     Sequence,
     TextChunk,
 )
+from .filter import HomeInfo, filter_intents
 from .intents import (
     IntentData,
     IntentDataSettings,
@@ -48,7 +49,9 @@ __all__ = [
     "check_excluded_context",
     "check_required_context",
     "Expression",
+    "filter_intents",
     "Group",
+    "HomeInfo",
     "IntentData",
     "IntentDataSettings",
     "Intents",

@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.10.0
+
+- Add `filter_intents` to scope an `Intents` object to available domains/supported intents
+
 ## 3.9.0
 
 - Remove ngram fuzzy matcher
