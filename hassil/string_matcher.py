@@ -6,8 +6,6 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
-from unicode_rbnf import RbnfEngine
-
 from .errors import MissingListError, MissingRuleError
 from .expression import (
     Alternative,
@@ -35,6 +33,7 @@ from .models import (
     UnmatchedRangeEntity,
     UnmatchedTextEntity,
 )
+from .numbers import get_rbnf_engine
 from .trie import Trie
 from .util import (
     WHITESPACE,
@@ -50,9 +49,6 @@ FLOAT_START = re.compile(r"^(\s*-?[0-9]+(?:[.,][0-9]+)?)")
 INTEGER_ANYWHERE = re.compile(r"(\s*-?[0-9])")
 FLOAT_ANYWHERE = re.compile(r"(\s*-?[0-9]+(?:[.,][0-9]+)?)")
 BREAK_WORDS_TABLE = str.maketrans("-_", "  ")
-
-# lang -> engine
-_ENGINE_CACHE: Dict[str, RbnfEngine] = {}
 
 # lang -> number -> words
 _RANGE_TRIE_CACHE: Dict[
@@ -1004,21 +1000,7 @@ def _build_range_trie(language: str, range_list: RangeSlotList) -> Trie:
     range_trie = Trie()
 
     # Load number formatting engine
-    engine = _ENGINE_CACHE.get(language)
-    if engine is None:
-        try:
-            engine = RbnfEngine.for_language(language)
-        except ValueError as err:
-            # Fall back to language family (e.g., "en" for "en-US")
-            lang_match = re.match(r"^(.+)[-_].+$", language)
-            if lang_match:
-                lang_family = lang_match.group(1)
-                engine = RbnfEngine.for_language(lang_family)
-
-            if engine is None:
-                raise err
-
-        _ENGINE_CACHE[language] = engine
+    engine = get_rbnf_engine(language)
 
     for word_number in range_list.get_numbers():
         range_value: Union[float, int] = word_number

@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Dict, Iterable, Optional, Set, Tuple
 
 import yaml
-from unicode_rbnf import RbnfEngine
 
 from .errors import MissingListError, MissingRuleError
 from .expression import (
@@ -25,12 +24,12 @@ from .expression import (
     TextChunk,
 )
 from .intents import Intents, RangeSlotList, SlotList, TextSlotList, WildcardSlotList
+from .numbers import get_rbnf_engine
 from .util import merge_dict, normalize_whitespace
 
 _LOGGER = logging.getLogger("hassil.sample")
 
 # lang -> engine
-_ENGINE_CACHE: Dict[str, RbnfEngine] = {}
 
 
 def sample_intents(
@@ -242,12 +241,7 @@ def sample_expression(
             if range_list.words:
                 words_language = range_list.words_language or language
                 if words_language:
-                    engine = _ENGINE_CACHE.get(words_language)
-                    if engine is None:
-                        engine = RbnfEngine.for_language(words_language)
-                        _ENGINE_CACHE[words_language] = engine
-
-                    assert engine is not None
+                    engine = get_rbnf_engine(words_language)
 
                     # digits -> words
                     for word_number in range_list.get_numbers():
