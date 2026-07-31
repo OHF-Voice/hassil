@@ -36,7 +36,7 @@ from .models import (
 from .numbers import get_rbnf_engine
 from .trie import Trie
 from .util import (
-    WHITESPACE,
+    CJK_WHITESPACE,
     check_excluded_context,
     check_required_context,
     match_first,
@@ -194,9 +194,9 @@ def match_expression(
         leading_ws = 0
 
         if settings.ignore_whitespace:
-            # Remove all whitespace
-            chunk_text = WHITESPACE.sub("", chunk.text)
-            context_text = WHITESPACE.sub("", context.text)
+            # Remove whitespace between CJK characters only
+            chunk_text = CJK_WHITESPACE.sub("", chunk.text)
+            context_text = CJK_WHITESPACE.sub("", context.text)
         else:
             # Keep whitespace
             chunk_text = chunk.text

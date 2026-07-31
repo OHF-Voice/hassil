@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.10.1
+
+- Only strip whitespace between CJK characters when `ignore_whitespace` is set, preserving spaces in non-CJK wildcard captures such as `Taylor Swift` ([#276](https://github.com/OHF-Voice/hassil/issues/276))
+
 ## 3.10.0
 
 - Add `filter_intents` to scope an `Intents` object to available domains/supported intents

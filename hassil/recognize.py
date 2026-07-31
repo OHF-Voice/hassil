@@ -11,7 +11,7 @@ from .intents import Intent, IntentData, Intents, SlotList, WildcardSlotList
 from .models import MatchCapture, MatchEntity, UnmatchedEntity, UnmatchedTextEntity
 from .string_matcher import MatchContext, MatchSettings, match_expression
 from .util import (
-    WHITESPACE,
+    CJK_WHITESPACE,
     check_excluded_context,
     check_required_context,
     normalize_text,
@@ -260,8 +260,8 @@ def recognize_all(
 
     # Fall back to string matcher
     if intents.settings.ignore_whitespace:
-        text_no_skip_words = WHITESPACE.sub("", text_no_skip_words)
-        text_with_skip_words_matchable = WHITESPACE.sub("", text_with_skip_words)
+        text_no_skip_words = CJK_WHITESPACE.sub("", text_no_skip_words)
+        text_with_skip_words_matchable = CJK_WHITESPACE.sub("", text_with_skip_words)
     else:
         # Artifical word boundary
         text_no_skip_words += " "
@@ -298,7 +298,7 @@ def recognize_all(
                                 start=False,
                             )
                             if intents.settings.ignore_whitespace:
-                                text_with_skip_words_at_end = WHITESPACE.sub(
+                                text_with_skip_words_at_end = CJK_WHITESPACE.sub(
                                     "", text_with_skip_words_at_end
                                 )
                             else:
@@ -314,7 +314,7 @@ def recognize_all(
                                 end=False,
                             )
                             if intents.settings.ignore_whitespace:
-                                text_with_skip_words_at_start = WHITESPACE.sub(
+                                text_with_skip_words_at_start = CJK_WHITESPACE.sub(
                                     "", text_with_skip_words_at_start
                                 )
                             else:
@@ -477,7 +477,7 @@ def is_match(
         text = remove_skip_words(text, skip_words, ignore_whitespace)
 
     if ignore_whitespace:
-        text = WHITESPACE.sub("", text)
+        text = CJK_WHITESPACE.sub("", text)
     else:
         # Artifical word boundary
         text += " "

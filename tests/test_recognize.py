@@ -631,22 +631,24 @@ def test_recognize_all() -> None:
 
 
 def test_ignore_whitespace() -> None:
-    """Test option to ignore whitespace during matching."""
+    """Test option to ignore whitespace between CJK characters during matching."""
     yaml_text = """
-    language: "en"
+    language: "zh-TW"
     settings:
       ignore_whitespace: true
     intents:
       TestIntent1:
         data:
           - sentences:
-              - "run [the] test"
+              - "打開[大]燈"
     """
 
     with io.StringIO(yaml_text) as test_file:
         intents = Intents.from_yaml(test_file)
 
-    for sentence in ("runtest", "runthetest", "r u n t h e t e s t"):
+    # Whitespace between CJK characters is ignored, so all of these match a
+    # template written without spaces.
+    for sentence in ("打開燈", "打開大燈", "打 開 大 燈"):
         result = recognize(sentence, intents)
         assert result is not None, sentence
 
@@ -1500,25 +1502,36 @@ def test_wildcard_outside_word() -> None:
 def test_wildcard_outside_word_ignore_whitespace() -> None:
     """Test wildcard outside of a word when ignoring whitespace."""
     yaml_text = """
-    language: "en"
+    language: "zh-TW"
     settings:
       ignore_whitespace: true
     intents:
       Test:
         data:
           - sentences:
-              - "ab{test} cd"
+              - "播放{search_query}"
     lists:
-      test:
+      search_query:
         wildcard: true
     """
 
     with io.StringIO(yaml_text) as test_file:
         intents = Intents.from_yaml(test_file)
 
-    for sentence in ("abc123 cd", "abc123cd"):
+    # Whitespace *between* CJK characters is ignored on both sides.
+    for sentence in ("播放五月天", "播放 五月天", "播放 五 月 天"):
         result = recognize(sentence, intents)
         assert result is not None, f"{sentence} should match"
+        assert result.entities["search_query"].value == "五月天"
+
+    # Whitespace inside a non-CJK value is preserved (issue #276): the setting
+    # must not glue "Taylor Swift" into "TaylorSwift".
+    result = recognize("播放 Taylor Swift", intents)
+    assert result is not None
+    entity = result.entities["search_query"]
+    assert entity.value == "Taylor Swift"
+    assert entity.text == "Taylor Swift"
+    assert entity.text_clean == "Taylor Swift"
 
 
 def test_entity_metadata() -> None:
