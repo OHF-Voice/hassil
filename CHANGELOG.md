@@ -3,6 +3,7 @@
 ## 3.10.1
 
 - Only strip whitespace between CJK characters when `ignore_whitespace` is set, preserving spaces in non-CJK wildcard captures such as `Taylor Swift` ([#276](https://github.com/OHF-Voice/hassil/issues/276))
+- Break ties in `recognize_best` with intent name
 
 ## 3.10.0
 
