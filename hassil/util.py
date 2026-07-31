@@ -16,6 +16,19 @@ WHITESPACE = re.compile(r"\s+")
 WHITESPACE_CAPTURE = re.compile(r"(\s+)")
 WHITESPACE_SEPARATOR = " "
 
+# Scripts without inter-word spaces (CJK ideographs, Japanese kana, Korean
+# hangul). When ``ignore_whitespace`` is set, whitespace is only removed
+# *between* two of these characters. Whitespace at a CJK/non-CJK boundary or
+# between non-CJK characters is preserved so that values like song titles
+# ("Taylor Swift") keep their internal spaces instead of being glued together.
+CJK = (
+    "一-鿿"  # CJK Unified Ideographs
+    "㐀-䶿"  # CJK Unified Ideographs Extension A
+    "぀-ヿ"  # Hiragana + Katakana
+    "가-힯"  # Hangul Syllables
+)
+CJK_WHITESPACE = re.compile(rf"(?<=[{CJK}])\s+(?=[{CJK}])")
+
 TEMPLATE_SYNTAX = re.compile(r".*[(){}<>\[\]|@].*")
 
 PUNCTUATION_STR_NO_PERIOD = "。,，?¿？؟!¡！;；:：’"
