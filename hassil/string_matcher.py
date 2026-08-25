@@ -575,7 +575,7 @@ def match_expression(
                 ):
                     anchored_text = context.text.lstrip()
                     if anchored_text:
-                        candidate_values = text_list.get_candidates(anchored_text[0])
+                        candidate_values = text_list.get_candidates(anchored_text)
 
                 for slot_value in candidate_values:
                     # Filter possible values with required/excluded context

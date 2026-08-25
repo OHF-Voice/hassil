@@ -101,6 +101,28 @@ class Trie:
                 current_children = node.children or {}
                 current_position += 1
 
+    def find_prefixes(self, text: str) -> Iterable[Tuple[int, str, Any]]:
+        """Yield (end_pos, text, value) for every key that is a prefix of text.
+
+        Unlike ``find``, this only walks from the start of the string, so it costs
+        O(length of the longest matching key) instead of scanning the whole text.
+        """
+        current_children: Optional[Dict[str, TrieNode]] = self.roots
+
+        for i, current_char in enumerate(text):
+            if current_children is None:
+                return
+
+            node = current_children.get(current_char)
+            if node is None:
+                return
+
+            if node.text is not None:
+                for value in node.values or [None]:
+                    yield (i + 1, node.text, value)
+
+            current_children = node.children
+
     def next_id(self) -> int:
         current_id = self._next_id
         self._next_id += 1

@@ -11,7 +11,10 @@ from yaml import safe_load
 
 from .expression import Expression, Sentence, TextChunk
 from .parse_expression import parse_sentence
+from .trie import Trie
 from .util import is_template, merge_dict, normalize_text
+
+_BREAK_WORDS_TABLE = str.maketrans("-_", "  ")
 
 
 @dataclass
@@ -133,39 +136,29 @@ class TextSlotList(SlotList):
 
     values: List[TextSlotValue]
 
-    _first_char_index: Optional[Dict[str, List[TextSlotValue]]] = field(
+    _value_trie: Optional[Trie] = field(
         default=None, init=False, repr=False, compare=False
     )
-    """Values bucketed by the first character of their input text (lazily built)."""
+    """Plain-text values indexed by their (casefolded) input text."""
 
     _unindexed_values: Optional[List[TextSlotValue]] = field(
         default=None, init=False, repr=False, compare=False
     )
-    """Values that cannot be bucketed and must always be tried."""
-
-    @staticmethod
-    def _bucket_key(char: str) -> Optional[str]:
-        """Return the index bucket for a first character, or None if not indexable.
-
-        Only ASCII is bucketed. Matching is case-insensitive via ``re.IGNORECASE``,
-        whose equivalence classes for non-ASCII characters do not always agree with
-        ``str.lower()`` (e.g. ``ſ`` matches ``s``, ``İ`` lowercases to two
-        characters). Rather than reimplement those rules, non-ASCII first
-        characters go into the always-try bucket, which stays small in practice.
-        """
-        if not char.isascii():
-            return None
-
-        # "-" and "_" are rewritten by the matcher's break-words fallback, so a
-        # value starting with one of them is not safely indexable.
-        if char in ("-", "_"):
-            return None
-
-        return char.lower()
+    """Values that cannot be indexed and must always be tried."""
 
     def _build_index(self) -> None:
-        """Bucket values by the first character of their input text."""
-        index: Dict[str, List[TextSlotValue]] = {}
+        """Index plain-text values in a trie keyed on their input text.
+
+        Values are keyed on ``str.casefold`` because text chunks are matched with
+        ``re.IGNORECASE``, and full case folding unifies at least as much as the
+        simple folding ``re.IGNORECASE`` uses -- so the index can only ever offer
+        too many candidates, never too few.
+
+        Characters whose casefold is not a single character (``ß`` -> ``ss``)
+        would misalign the trie walk, so those values are left unindexed rather
+        than risk a miss. They are rare enough that scanning them costs little.
+        """
+        trie = Trie()
         unindexed: List[TextSlotValue] = []
 
         for value in self.values:
@@ -174,42 +167,47 @@ class TextSlotList(SlotList):
                 # Leading whitespace is stripped by the matcher at a word start.
                 text = value.text_in.text.lstrip()
                 if text:
-                    key = TextSlotList._bucket_key(text[0])
+                    folded = text.casefold()
+                    if len(folded) == len(text):
+                        key = folded
 
             if key is None:
-                # Templates, empty values, and anything not safely indexable.
+                # Templates, empty values, and values that do not fold cleanly.
                 unindexed.append(value)
             else:
-                index.setdefault(key, []).append(value)
+                trie.insert(key, value)
 
-        self._first_char_index = index
+        self._value_trie = trie
         self._unindexed_values = unindexed
 
-    def get_candidates(self, first_char: str) -> List[TextSlotValue]:
-        """Return values that could match text starting with ``first_char``.
+    def get_candidates(self, text: str) -> List[TextSlotValue]:
+        """Return values that could match at the start of ``text``.
 
-        Falls back to every value when the character cannot be indexed. Only
-        valid when the matcher is anchored at the start of the remaining text
-        (i.e. no open wildcard or unmatched entity that may skip ahead).
+        Only valid when the matcher is anchored at the start of the remaining
+        text -- an open wildcard or unmatched entity may skip ahead, in which case
+        every value is still a candidate.
         """
-        key = TextSlotList._bucket_key(first_char)
-        if key is None:
-            return self.values
-
-        if self._first_char_index is None:
+        if self._value_trie is None:
             self._build_index()
 
-        assert self._first_char_index is not None
+        assert self._value_trie is not None
         assert self._unindexed_values is not None
 
-        bucket = self._first_char_index.get(key)
-        if not bucket:
-            return self._unindexed_values
+        folded = text.casefold()
+        candidates = [value for _end, _key, value in self._value_trie.find_prefixes(folded)]
 
-        if not self._unindexed_values:
-            return bucket
+        if ("-" in folded) or ("_" in folded):
+            # The matcher also retries with "-"/"_" rewritten to spaces, so a
+            # value with a space can match text written with a hyphen.
+            broken = folded.translate(_BREAK_WORDS_TABLE)
+            candidates.extend(
+                value for _end, _key, value in self._value_trie.find_prefixes(broken)
+            )
 
-        return bucket + self._unindexed_values
+        if self._unindexed_values:
+            candidates.extend(self._unindexed_values)
+
+        return candidates
 
     @staticmethod
     def from_strings(
