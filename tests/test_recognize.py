@@ -1,11 +1,11 @@
 import io
-from typing import Set, cast
+from typing import Dict, Set, cast
 
 import pytest
 
 from hassil import Intents, recognize, recognize_all, recognize_best
 from hassil.expression import TextChunk
-from hassil.intents import TextSlotList
+from hassil.intents import SlotList, TextSlotList
 from hassil.models import MatchEntity, UnmatchedRangeEntity, UnmatchedTextEntity
 from hassil.recognize import MISSING_ENTITY
 from hassil.util import normalize_for_matching
@@ -2725,7 +2725,7 @@ def test_empty_slot_list_value_never_matches() -> None:
     with io.StringIO(yaml_text) as test_file:
         intents = Intents.from_yaml(test_file)
 
-    slot_lists = {
+    slot_lists: Dict[str, SlotList] = {
         "name": TextSlotList.from_tuples(
             [("", "empty"), ("  ", "whitespace"), ("kitchen light", "light.kitchen")],
             allow_template=False,
