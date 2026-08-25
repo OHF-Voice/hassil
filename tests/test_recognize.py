@@ -2453,3 +2453,174 @@ def test_inline_range_lists() -> None:
 
     # Range list is only created during matching
     assert not intents.slot_lists
+
+
+def test_required_fragment_prefilter_is_sound() -> None:
+    """Templates must not be skipped by the prefilter when they can still match.
+
+    Each case here defeated the old regex-based prefilter, which compiled a
+    pattern per template and dropped any template whose pattern did not match.
+    """
+    # Everything is optional, so there is no literal to require.
+    yaml_text = """
+    language: "en"
+    lists:
+      name:
+        values:
+          - "kitchen light"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "[turn] [on] {name}"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    assert recognize("kitchen light", intents) is not None
+
+    # Optional space between literals ("uit[ ]schakelen"), as used by nl/de.
+    yaml_text = """
+    language: "en"
+    lists:
+      name:
+        values:
+          - "lamp"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "{name} uit[ ]schakelen"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    for sentence in ("lamp uitschakelen", "lamp uit schakelen"):
+        assert recognize(sentence, intents) is not None, sentence
+
+    # The matcher breaks "-"/"_" apart, so a hyphenated input still matches a
+    # template written with a space. A decoy template keeps any
+    # "nothing matched, try everything" fallback from hiding a mistake.
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "turn on the living room light"
+      DecoyIntent:
+        data:
+          - sentences:
+              - "turn on the living-room light [now]"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    for sentence in ("turn on the living-room light", "turn on the living_room light"):
+        intent_names = {r.intent.name for r in recognize_all(sentence, intents)}
+        assert "TestIntent" in intent_names, sentence
+
+    # A skip word can be a real part of a template.
+    yaml_text = """
+    language: "en"
+    skip_words:
+      - "i want"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "i want to watch tv"
+      DecoyIntent:
+        data:
+          - sentences:
+              - "to watch tv"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    intent_names = {r.intent.name for r in recognize_all("i want to watch tv", intents)}
+    assert "TestIntent" in intent_names
+
+
+def test_required_fragment_prefilter_rejects() -> None:
+    """The prefilter must still skip templates that cannot match."""
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "(open|close) the door"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    assert recognize("open the door", intents) is not None
+    assert recognize("close the door", intents) is not None
+    assert recognize("smash the door", intents) is None
+
+
+def test_range_multi_digit_after_wildcard() -> None:
+    """A multi-digit number after an open wildcard must not be truncated."""
+    yaml_text = """
+    language: "en"
+    lists:
+      query:
+        wildcard: true
+      num:
+        range:
+          from: 1
+          to: 500
+          words: false
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "play {query} {num}"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    for sentence, number in (
+        ("play song 7", 7),
+        ("play song 42", 42),
+        ("play song 137", 137),
+    ):
+        result = recognize(sentence, intents)
+        assert result is not None, sentence
+        assert result.entities["num"].value == number, sentence
+        assert result.entities["query"].value == "song", sentence
+
+
+def test_wildcard_not_corrupted_by_number_words() -> None:
+    """An open wildcard must not accumulate text from other number candidates."""
+    yaml_text = """
+    language: "en"
+    lists:
+      query:
+        wildcard: true
+      num:
+        range:
+          from: 1
+          to: 10
+          digits: false
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "play {query} {num}"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    # "one" and "two" are also number words, so the trie yields several
+    # candidates and the wildcard is visited more than once.
+    result = recognize("play one two three", intents)
+    assert result is not None
+    assert result.entities["num"].value == 3
+    assert result.entities["query"].value == "one two"
+
+    result = recognize("play one two three four", intents)
+    assert result is not None
+    assert result.entities["num"].value == 4
+    assert result.entities["query"].value == "one two three"
