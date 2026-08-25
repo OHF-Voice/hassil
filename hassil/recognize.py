@@ -4,7 +4,16 @@ import collections.abc
 import itertools
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, MutableSequence, Optional, Tuple
+from typing import (
+    Any,
+    Dict,
+    FrozenSet,
+    Iterable,
+    List,
+    MutableSequence,
+    Optional,
+    Tuple,
+)
 
 from .expression import Expression, ListReference, Sentence, Sequence
 from .intents import Intent, IntentData, Intents, SlotList, WildcardSlotList
@@ -12,11 +21,11 @@ from .models import MatchCapture, MatchEntity, UnmatchedEntity, UnmatchedTextEnt
 from .string_matcher import MatchContext, MatchSettings, match_expression
 from .util import (
     CJK_WHITESPACE,
+    TrackedText,
     check_excluded_context,
     check_required_context,
-    normalize_text,
-    remove_punctuation,
-    remove_skip_words,
+    normalize_for_matching,
+    remove_skip_words_tracked,
 )
 
 MISSING_ENTITY = "<missing>"
@@ -139,7 +148,10 @@ def recognize_all(
     Yields results as they're matched.
     If allow_unmatched_entities is True, you should check for unmatched entities.
     """
-    text_with_skip_words = normalize_text(remove_punctuation(text)).strip()
+    # Offsets are tracked alongside every transformation so entity spans can be
+    # reported against the text the caller passed in.
+    tracked_with_skip_words = normalize_for_matching(text)
+    text_with_skip_words = tracked_with_skip_words.text
 
     if skip_words is None:
         skip_words = intents.skip_words
@@ -148,11 +160,14 @@ def recognize_all(
         skip_words = list(itertools.chain(skip_words, intents.skip_words))
 
     if skip_words:
-        text_no_skip_words = remove_skip_words(
-            text_with_skip_words, skip_words, intents.settings.ignore_whitespace
+        tracked_no_skip_words = tracked_with_skip_words.copy()
+        remove_skip_words_tracked(
+            tracked_no_skip_words, skip_words, intents.settings.ignore_whitespace
         )
     else:
-        text_no_skip_words = text_with_skip_words
+        tracked_no_skip_words = tracked_with_skip_words
+
+    text_no_skip_words = tracked_no_skip_words.text
 
     # True if removing skip words actually changed the text. When it did, a skip
     # word might really be part of a sentence template (e.g. "I want" in
@@ -160,6 +175,24 @@ def recognize_all(
     had_skip_words_removed = text_no_skip_words != text_with_skip_words
 
     text_keywords = text_no_skip_words.split()
+
+    # Haystack for the required-fragment prefilter (see
+    # Sentence.get_required_clauses). Both candidate texts are included because
+    # removing skip words can join characters that were not adjacent before
+    # (in ignore_whitespace mode), so neither text's fragments are a subset of
+    # the other's.
+    #
+    # The matcher's break-words fallback needs no variant here: it only rewrites
+    # "-"/"_" in the input to spaces, and a whitespace-free fragment inside the
+    # rewritten text always lies within a "-"/"_"-free run of the original.
+    prefilter_haystack = (
+        f"{text_with_skip_words.casefold()}\n{text_no_skip_words.casefold()}"
+    )
+
+    if intents.settings.ignore_whitespace:
+        # The matcher drops whitespace between CJK characters on both sides, so a
+        # template fragment may only appear in the stripped form of the input.
+        prefilter_haystack += "\n" + CJK_WHITESPACE.sub("", prefilter_haystack)
 
     if slot_lists is None:
         slot_lists = intents.slot_lists
@@ -228,47 +261,51 @@ def recognize_all(
 
             available_intents.append((intent, intent_data, match_settings, None))
 
-    # Filter with regex
-    if intents.settings.filter_with_regex and (not allow_unmatched_entities):
-        matching_intents: MutableSequence[
-            Tuple[Intent, IntentData, MatchSettings, Optional[List[Sentence]]]
-        ] = []
+    # Skip sentence templates whose required literal text is missing from the
+    # input. Unlike a regex built from the template, this is a sound filter: a
+    # template is only dropped when it provably cannot match, so no result is
+    # lost. It therefore does not need a "nothing matched, try everything again"
+    # fallback, and applies with allow_unmatched_entities too.
+    filtered_intents: MutableSequence[
+        Tuple[Intent, IntentData, MatchSettings, Optional[List[Sentence]]]
+    ] = []
 
-        for intent, intent_data, match_settings, _intent_sentences in available_intents:
-            if not intent_data.settings.filter_with_regex:
-                # All sentences
-                matching_intents.append((intent, intent_data, match_settings, None))
-                continue
+    for intent, intent_data, match_settings, _intent_sentences in available_intents:
+        matching_intent_sentences = [
+            intent_sentence
+            for intent_sentence in intent_data.sentences
+            if _has_required_fragments(
+                intent_sentence.get_required_clauses(match_settings.expansion_rules),
+                prefilter_haystack,
+            )
+        ]
 
-            matching_intent_sentences = []
-            for intent_sentence in intent_data.sentences:
-                # Compile to regex once
-                intent_sentence.compile(match_settings.expansion_rules)
-                assert intent_sentence.pattern is not None
+        if matching_intent_sentences:
+            filtered_intents.append(
+                (intent, intent_data, match_settings, matching_intent_sentences)
+            )
 
-                regex_match = intent_sentence.pattern.match(text_no_skip_words)
-                if regex_match is not None:
-                    matching_intent_sentences.append(intent_sentence)
-
-            if matching_intent_sentences:
-                matching_intents.append(
-                    (intent, intent_data, match_settings, matching_intent_sentences)
-                )
-
-        if matching_intents:
-            available_intents = matching_intents
+    available_intents = filtered_intents
 
     # Fall back to string matcher
-    if intents.settings.ignore_whitespace:
-        text_no_skip_words = CJK_WHITESPACE.sub("", text_no_skip_words)
-        text_with_skip_words_matchable = CJK_WHITESPACE.sub("", text_with_skip_words)
-    else:
-        # Artifical word boundary
-        text_no_skip_words += " "
-        text_with_skip_words_matchable = text_with_skip_words + " "
+    def make_matchable(tracked: TrackedText) -> TrackedText:
+        """Apply the final match-text tweaks, keeping offsets aligned."""
+        matchable = tracked.copy()
+        if intents.settings.ignore_whitespace:
+            matchable.sub(CJK_WHITESPACE)
+        else:
+            # Artifical word boundary
+            matchable.append(" ")
 
-    text_with_skip_words_at_start: Optional[str] = None
-    text_with_skip_words_at_end: Optional[str] = None
+        return matchable
+
+    tracked_no_skip_words = make_matchable(tracked_no_skip_words)
+    tracked_with_skip_words_matchable = make_matchable(tracked_with_skip_words)
+
+    text_no_skip_words = tracked_no_skip_words.text
+
+    tracked_at_start: Optional[TrackedText] = None
+    tracked_at_end: Optional[TrackedText] = None
 
     def is_wildcard(e: Expression) -> bool:
         return isinstance(e, ListReference) and isinstance(
@@ -281,60 +318,54 @@ def recognize_all(
 
         # Check each sentence template
         for intent_sentence in intent_sentences:
-            match_text = text_no_skip_words
+            tracked_match = tracked_no_skip_words
             if isinstance(intent_sentence.expression, Sequence):
                 seq: Sequence = intent_sentence.expression
                 if (len(seq.items) == 1) and is_wildcard(seq.items[0]):
                     # Entire sentence is a wild card
-                    match_text = text_with_skip_words
+                    tracked_match = tracked_with_skip_words
                 elif len(seq.items) > 1:
                     if is_wildcard(seq.items[0]):
                         # Starts with a wildcard
-                        if text_with_skip_words_at_end is None:
-                            text_with_skip_words_at_end = remove_skip_words(
-                                text_with_skip_words,
+                        if tracked_at_end is None:
+                            tracked_at_end = tracked_with_skip_words.copy()
+                            remove_skip_words_tracked(
+                                tracked_at_end,
                                 skip_words,
                                 intents.settings.ignore_whitespace,
                                 start=False,
                             )
-                            if intents.settings.ignore_whitespace:
-                                text_with_skip_words_at_end = CJK_WHITESPACE.sub(
-                                    "", text_with_skip_words_at_end
-                                )
-                            else:
-                                text_with_skip_words_at_end += " "
-                        match_text = text_with_skip_words_at_end
+                            tracked_at_end = make_matchable(tracked_at_end)
+                        tracked_match = tracked_at_end
                     elif is_wildcard(seq.items[-1]):
                         # Ends with a wildcard
-                        if text_with_skip_words_at_start is None:
-                            text_with_skip_words_at_start = remove_skip_words(
-                                text_with_skip_words,
+                        if tracked_at_start is None:
+                            tracked_at_start = tracked_with_skip_words.copy()
+                            remove_skip_words_tracked(
+                                tracked_at_start,
                                 skip_words,
                                 intents.settings.ignore_whitespace,
                                 end=False,
                             )
-                            if intents.settings.ignore_whitespace:
-                                text_with_skip_words_at_start = CJK_WHITESPACE.sub(
-                                    "", text_with_skip_words_at_start
-                                )
-                            else:
-                                text_with_skip_words_at_start += " "
-                        match_text = text_with_skip_words_at_start
+                            tracked_at_start = make_matchable(tracked_at_start)
+                        tracked_match = tracked_at_start
 
             # Text(s) to attempt matching against.
-            match_texts = [match_text]
-            if had_skip_words_removed and (match_text == text_no_skip_words):
+            tracked_matches = [tracked_match]
+            if had_skip_words_removed and (
+                tracked_match.text == tracked_no_skip_words.text
+            ):
                 # A skip word may actually be part of this (non-wildcard)
                 # template, so try matching with skip words left in *first*.
                 # The literal interpretation (what the user actually said) is
                 # preferred over the one where words were dropped as filler.
                 # Wildcard sentences already keep skip words where appropriate.
-                match_texts.insert(0, text_with_skip_words_matchable)
+                tracked_matches.insert(0, tracked_with_skip_words_matchable)
 
-            for candidate_text in match_texts:
+            for candidate in tracked_matches:
                 # Create initial context
                 match_context = MatchContext(
-                    text=candidate_text,
+                    text=candidate.text,
                     intent_context=intent_context,
                     intent_sentence=intent_sentence,
                     intent_data=intent_data,
@@ -343,19 +374,88 @@ def recognize_all(
                 maybe_match_contexts = match_expression(
                     match_settings, match_context, intent_sentence.expression
                 )
+                # Entity spans come out in candidate-text coordinates; the offset
+                # map puts them back into original-text coordinates.
                 yield from _process_match_contexts(
                     maybe_match_contexts,
                     intent,
                     intent_data,
+                    text_offsets=candidate.offsets,
                     default_response=default_response,
                     allow_unmatched_entities=allow_unmatched_entities,
                 )
+
+
+def _has_required_fragments(
+    required_clauses: FrozenSet[FrozenSet[str]], haystack: str
+) -> bool:
+    """Return True if the haystack satisfies every clause (see get_required_clauses)."""
+    for clause in required_clauses:
+        for fragment in clause:
+            if fragment in haystack:
+                break
+        else:
+            # No fragment from this clause is present, so the template
+            # cannot possibly match.
+            return False
+
+    return True
+
+
+def _translate_text_span(
+    text_span: Tuple[int, int], text_offsets: List[int], original_len: int
+) -> Tuple[int, int]:
+    """Map a span in the match text back to a span in the original text."""
+    start, end = text_span
+    num_offsets = len(text_offsets)
+
+    if start < num_offsets:
+        new_start = text_offsets[start]
+    else:
+        new_start = original_len
+
+    # end is exclusive, so translate the last included character.
+    if end > start:
+        last = end - 1
+        new_end = (text_offsets[last] + 1) if last < num_offsets else original_len
+    else:
+        new_end = new_start
+
+    return (min(new_start, original_len), min(max(new_end, new_start), original_len))
+
+
+def _finalize_entity_spans(
+    entities: Iterable[MatchEntity],
+    text_offsets: Optional[List[int]],
+    original_len: int,
+) -> None:
+    """Trim wildcard text and map every span into original-text coordinates."""
+    for entity in entities:
+        if entity.is_wildcard:
+            # Wildcards absorb the whitespace up to the next literal chunk. Trim
+            # it, keeping text_span in step so it still delimits entity.text.
+            raw_text = entity.text
+            trimmed = raw_text.strip()
+            if (entity.text_span is not None) and (raw_text != trimmed):
+                lead = len(raw_text) - len(raw_text.lstrip())
+                start = entity.text_span[0] + lead
+                entity.text_span = (start, start + len(trimmed))
+
+            entity.text = trimmed
+            if isinstance(entity.value, str):
+                entity.value = entity.value.strip()
+
+        if (text_offsets is not None) and (entity.text_span is not None):
+            entity.text_span = _translate_text_span(
+                entity.text_span, text_offsets, original_len
+            )
 
 
 def _process_match_contexts(
     match_contexts: Iterable[MatchContext],
     intent: Intent,
     intent_data: IntentData,
+    text_offsets: Optional[List[int]] = None,
     default_response: Optional[str] = None,
     allow_unmatched_entities: bool = False,
 ) -> Iterable[RecognizeResult]:
@@ -405,14 +505,12 @@ def _process_match_contexts(
         ):
             continue
 
-        # Clean up wildcard entities
-        for entity in maybe_match_context.entities:
-            if not entity.is_wildcard:
-                continue
-
-            entity.text = entity.text.strip()
-            if isinstance(entity.value, str):
-                entity.value = entity.value.strip()
+        # Clean up wildcard entities and put spans in original-text coordinates
+        _finalize_entity_spans(
+            maybe_match_context.entities,
+            text_offsets,
+            len(maybe_match_context.original_text),
+        )
 
         # Add fixed entities
         entity_names = set(entity.name for entity in maybe_match_context.entities)
@@ -471,16 +569,18 @@ def is_match(
     language: Optional[str] = None,
 ) -> Optional[MatchContext]:
     """Return the first match of input text/words against a sentence expression."""
-    text = normalize_text(remove_punctuation(text)).strip()
+    tracked = normalize_for_matching(text)
 
     if skip_words:
-        text = remove_skip_words(text, skip_words, ignore_whitespace)
+        remove_skip_words_tracked(tracked, skip_words, ignore_whitespace)
 
     if ignore_whitespace:
-        text = CJK_WHITESPACE.sub("", text)
+        tracked.sub(CJK_WHITESPACE)
     else:
         # Artifical word boundary
-        text += " "
+        tracked.append(" ")
+
+    text = tracked.text
 
     if slot_lists is None:
         slot_lists = {}

@@ -1,5 +1,20 @@
 # Changelog
 
+## 3.12.0
+
+- Replace the regex sentence pre-filter with a filter on the literal text a template requires
+    - Sound: only skips templates that provably cannot match, so it needs no "nothing matched, try everything" fallback and works with `allow_unmatched_entities`
+    - The old filter could drop templates that *would* have matched (inputs using `-`/`_`, or a skip word that is part of a template), which is why several languages disabled it
+    - `filter_with_regex` is now parsed but ignored, and `Sentence.compile` is no longer used
+- Index `TextSlotList` values in a prefix trie so matching no longer scales with the number of values
+- Skip the break-words fallback when the text contains no `-` or `_`
+- Report `text_span` in original text coordinates instead of the punctuation/skip-word-stripped text used for matching, and stop including a wildcard's trailing whitespace
+- Ignore `TextSlotList` values with empty input text, which previously matched at any position and produced an entity with no text
+- Fix multi-digit numbers being truncated when a range list follows an open wildcard (`INTEGER_ANYWHERE` only matched one digit)
+- Fix an open wildcard accumulating text from other candidates when a range list matched several number words
+- Fix `words_match` never being set, which reported a matched number word as an unmatched entity
+- `Expression` is no longer an `ABC`, which makes `isinstance` dispatch in the matcher considerably faster
+
 ## 3.11.0
 
 - Only strip whitespace between CJK characters when `ignore_whitespace` is set, preserving spaces in non-CJK wildcard captures such as `Taylor Swift` ([#276](https://github.com/OHF-Voice/hassil/issues/276))

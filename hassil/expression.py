@@ -3,15 +3,21 @@
 from __future__ import annotations
 
 import re
-from abc import ABC
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, Iterator, List, Optional, Tuple
+from typing import Dict, FrozenSet, Iterable, Iterator, List, Optional, Set, Tuple
+
+from .util import PUNCTUATION_STR
 
 INLINE_RANGE_PATTERN = re.compile(r"^(\d+)..(\d+)(?:,(\d+))?$")
 
+_PUNCTUATION_CHARS = frozenset(PUNCTUATION_STR)
+
+# Guard against expansion rules that reference each other.
+_MAX_CLAUSE_DEPTH = 24
+
 
 @dataclass
-class Expression(ABC):
+class Expression:
     """Base class for expressions."""
 
 
@@ -186,6 +192,44 @@ class Sentence:
     text: Optional[str] = None
     pattern: Optional[re.Pattern] = None
 
+    required_clauses: Optional[FrozenSet[FrozenSet[str]]] = field(
+        default=None, repr=False, compare=False
+    )
+    """Literal fragments this template requires (see get_required_clauses)."""
+
+    def get_required_clauses(
+        self, expansion_rules: Dict[str, Sentence]
+    ) -> FrozenSet[FrozenSet[str]]:
+        """Return literal fragments that any matching input text must contain.
+
+        The result is in conjunctive normal form: a set of clauses, where the
+        input must contain at least one fragment from *every* clause. An empty
+        result means the template cannot be pre-filtered.
+
+        This is a necessary (not sufficient) condition for a match, so it is only
+        useful to skip templates that cannot possibly match. It is deliberately
+        conservative -- a fragment is only emitted when its presence is
+        guaranteed:
+
+        - Fragments are split on whitespace, so the matcher's break-words
+          fallback ("living-room" matching "living room") cannot cause a miss.
+        - Fragments containing punctuation that ``remove_punctuation`` may strip
+          from the input are dropped.
+        - Fragments are casefolded. ``str.casefold`` is at least as permissive as
+          the ``re.IGNORECASE`` matching used for text chunks, so the test can
+          only ever be too lenient, never too strict.
+
+        Note: like ``compile``, the result is cached on first use, so a given
+        Sentence object is assumed to always be used with the same expansion
+        rules.
+        """
+        if self.required_clauses is None:
+            self.required_clauses = frozenset(
+                _required_clauses(self.expression, expansion_rules)
+            )
+
+        return self.required_clauses
+
     def text_chunk_count(self) -> int:
         """Return the number of TextChunk expressions in this sentence."""
         assert isinstance(self.expression, Group)
@@ -200,6 +244,11 @@ class Sentence:
         return self.expression.list_names(expansion_rules)  # pylint: disable=no-member
 
     def compile(self, expansion_rules: Dict[str, Sentence]) -> None:
+        """Deprecated: compile this template to a filtering regex.
+
+        No longer used by the matcher, which pre-filters with
+        get_required_clauses instead. Kept for API compatibility.
+        """
         if self.pattern is not None:
             # Already compiled
             return
@@ -253,3 +302,65 @@ class Sentence:
             self._compile_expression(e_rule.expression, pattern_chunks, rules)
         else:
             raise ValueError(exp)
+
+
+def _text_clauses(text: str) -> Set[FrozenSet[str]]:
+    """Return one single-fragment clause per usable whitespace-separated piece."""
+    clauses: Set[FrozenSet[str]] = set()
+    for piece in text.split():
+        if _PUNCTUATION_CHARS.isdisjoint(piece):
+            clauses.add(frozenset((piece.casefold(),)))
+
+    return clauses
+
+
+def _required_clauses(
+    exp: Expression, rules: Dict[str, "Sentence"], depth: int = 0
+) -> Set[FrozenSet[str]]:
+    """Compute required literal fragments in CNF. See Sentence.get_required_clauses."""
+    if depth > _MAX_CLAUSE_DEPTH:
+        return set()
+
+    if isinstance(exp, TextChunk):
+        return _text_clauses(exp.text)
+
+    if isinstance(exp, Alternative):
+        # [optional] is (optional|), which constrains nothing.
+        if exp.is_optional or (not exp.items):
+            return set()
+
+        per_branch = [_required_clauses(item, rules, depth + 1) for item in exp.items]
+        if any(not branch for branch in per_branch):
+            # A branch requires nothing, so it could match without any fragment.
+            return set()
+
+        # Exactly one branch matches, so at least one fragment from one branch is
+        # present. Pick the smallest clause per branch and OR them together.
+        merged: Set[str] = set()
+        for branch in per_branch:
+            smallest = next(iter(branch))
+            for clause in branch:
+                if len(clause) < len(smallest):
+                    smallest = clause
+
+            merged.update(smallest)
+
+        return {frozenset(merged)}
+
+    if isinstance(exp, Group):
+        # Sequence and Permutation both require every item to match.
+        clauses: Set[FrozenSet[str]] = set()
+        for item in exp.items:
+            clauses.update(_required_clauses(item, rules, depth + 1))
+
+        return clauses
+
+    if isinstance(exp, RuleReference):
+        rule = rules.get(exp.rule_name)
+        if rule is None:
+            return set()
+
+        return _required_clauses(rule.expression, rules, depth + 1)
+
+    # ListReference and anything else: contents are unknown.
+    return set()

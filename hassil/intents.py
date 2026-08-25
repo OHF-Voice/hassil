@@ -11,7 +11,10 @@ from yaml import safe_load
 
 from .expression import Expression, Sentence, TextChunk
 from .parse_expression import parse_sentence
+from .trie import Trie
 from .util import is_template, merge_dict, normalize_text
+
+_BREAK_WORDS_TABLE = str.maketrans("-_", "  ")
 
 
 @dataclass
@@ -133,6 +136,84 @@ class TextSlotList(SlotList):
 
     values: List[TextSlotValue]
 
+    _value_trie: Optional[Trie] = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    """Plain-text values indexed by their (casefolded) input text."""
+
+    _unindexed_values: Optional[List[TextSlotValue]] = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    """Values that cannot be indexed and must always be tried."""
+
+    def _build_index(self) -> None:
+        """Index plain-text values in a trie keyed on their input text.
+
+        Values are keyed on ``str.casefold`` because text chunks are matched with
+        ``re.IGNORECASE``, and full case folding unifies at least as much as the
+        simple folding ``re.IGNORECASE`` uses -- so the index can only ever offer
+        too many candidates, never too few.
+
+        Characters whose casefold is not a single character (``ß`` -> ``ss``)
+        would misalign the trie walk, so those values are left unindexed rather
+        than risk a miss. They are rare enough that scanning them costs little.
+        """
+        trie = Trie()
+        unindexed: List[TextSlotValue] = []
+
+        for value in self.values:
+            key: Optional[str] = None
+            if isinstance(value.text_in, TextChunk):
+                if not value.text_in.text.strip():
+                    # Never matches (see match_expression), so don't offer it.
+                    continue
+
+                # Leading whitespace is stripped by the matcher at a word start.
+                text = value.text_in.text.lstrip()
+                folded = text.casefold()
+                if len(folded) == len(text):
+                    key = folded
+
+            if key is None:
+                # Templates and values that do not fold cleanly.
+                unindexed.append(value)
+            else:
+                trie.insert(key, value)
+
+        self._value_trie = trie
+        self._unindexed_values = unindexed
+
+    def get_candidates(self, text: str) -> List[TextSlotValue]:
+        """Return values that could match at the start of ``text``.
+
+        Only valid when the matcher is anchored at the start of the remaining
+        text -- an open wildcard or unmatched entity may skip ahead, in which case
+        every value is still a candidate.
+        """
+        if self._value_trie is None:
+            self._build_index()
+
+        assert self._value_trie is not None
+        assert self._unindexed_values is not None
+
+        folded = text.casefold()
+        candidates = [
+            value for _end, _key, value in self._value_trie.find_prefixes(folded)
+        ]
+
+        if ("-" in folded) or ("_" in folded):
+            # The matcher also retries with "-"/"_" rewritten to spaces, so a
+            # value with a space can match text written with a hyphen.
+            broken = folded.translate(_BREAK_WORDS_TABLE)
+            candidates.extend(
+                value for _end, _key, value in self._value_trie.find_prefixes(broken)
+            )
+
+        if self._unindexed_values:
+            candidates.extend(self._unindexed_values)
+
+        return candidates
+
     @staticmethod
     def from_strings(
         strings: Iterable[str],
@@ -191,7 +272,14 @@ class IntentDataSettings:
     """Settings for intent data."""
 
     filter_with_regex: bool = True
-    """Use regular expressions compiled from sentence patterns to filter possible matches."""
+    """Deprecated and ignored.
+
+    Sentence templates are now pre-filtered by the literal text they require
+    (see Sentence.get_required_clauses), which is a sound filter: it only ever
+    skips templates that provably cannot match. The old regex filter could drop
+    templates that *would* have matched, so languages had to opt out of it. The
+    setting is still parsed so existing YAML keeps loading.
+    """
 
 
 @dataclass(frozen=True)
@@ -318,7 +406,14 @@ class IntentsSettings:
     """True if whitespace should be ignored during matching."""
 
     filter_with_regex: bool = True
-    """Use regular expressions compiled from sentence patterns to filter possible matches."""
+    """Deprecated and ignored.
+
+    Sentence templates are now pre-filtered by the literal text they require
+    (see Sentence.get_required_clauses), which is a sound filter: it only ever
+    skips templates that provably cannot match. The old regex filter could drop
+    templates that *would* have matched, so languages had to opt out of it. The
+    setting is still parsed so existing YAML keeps loading.
+    """
 
 
 @dataclass

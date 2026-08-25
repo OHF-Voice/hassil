@@ -1,13 +1,14 @@
 import io
-from typing import Set, cast
+from typing import Dict, Set, cast
 
 import pytest
 
 from hassil import Intents, recognize, recognize_all, recognize_best
 from hassil.expression import TextChunk
-from hassil.intents import TextSlotList
+from hassil.intents import SlotList, TextSlotList
 from hassil.models import MatchEntity, UnmatchedRangeEntity, UnmatchedTextEntity
 from hassil.recognize import MISSING_ENTITY
+from hassil.util import normalize_for_matching
 
 TEST_YAML = """
 language: "en"
@@ -398,7 +399,7 @@ def test_skip_prefix() -> None:
     assert result is not None
     assert result.original_text == "run the test"
     assert result.entities["test_name"].value == "test"
-    assert result.entities["test_name"].text_span == (4, 8)
+    assert result.entities["test_name"].text_span == (8, 12)
 
 
 def test_skip_sorted() -> None:
@@ -1190,10 +1191,10 @@ def test_wildcard() -> None:
     assert set(result.entities.keys()) == {"album", "artist"}
     assert result.entities["album"].value == "The White Album"
     assert result.entities["album"].is_wildcard
-    assert result.entities["album"].text_span == (5, 21)
+    assert result.entities["album"].text_span == (5, 20)
     assert result.entities["artist"].value == "The Beatles"
     assert result.entities["artist"].is_wildcard
-    assert result.entities["artist"].text_span == (24, 36)
+    assert result.entities["artist"].text_span == (24, 35)
 
     # Wildcards cannot be empty
     sentence = "play by please now"
@@ -1207,7 +1208,7 @@ def test_wildcard() -> None:
     assert set(result.entities.keys()) == {"album", "artist"}
     assert result.entities["album"].value == "the white album"
     assert result.entities["album"].is_wildcard
-    assert result.entities["album"].text_span == (6, 22)
+    assert result.entities["album"].text_span == (6, 21)
     assert result.entities["artist"].value == "the beatles"
     assert result.entities["artist"].is_wildcard
     assert result.entities["artist"].text_span == (25, 36)
@@ -2367,7 +2368,7 @@ def test_wildcard_text_spans() -> None:
     assert result is not None
     assert result.entities.keys() == {"search_query", "media_class"}
     assert result.entities["search_query"].text == "Inception"
-    assert result.entities["search_query"].text_span == (9, 19)
+    assert result.entities["search_query"].text_span == (9, 18)
 
     assert result.entities["media_class"].text == "movie"
     assert result.entities["media_class"].text_span == (19, 24)
@@ -2453,3 +2454,290 @@ def test_inline_range_lists() -> None:
 
     # Range list is only created during matching
     assert not intents.slot_lists
+
+
+def test_required_fragment_prefilter_is_sound() -> None:
+    """Templates must not be skipped by the prefilter when they can still match.
+
+    Each case here defeated the old regex-based prefilter, which compiled a
+    pattern per template and dropped any template whose pattern did not match.
+    """
+    # Everything is optional, so there is no literal to require.
+    yaml_text = """
+    language: "en"
+    lists:
+      name:
+        values:
+          - "kitchen light"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "[turn] [on] {name}"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    assert recognize("kitchen light", intents) is not None
+
+    # Optional space between literals ("uit[ ]schakelen"), as used by nl/de.
+    yaml_text = """
+    language: "en"
+    lists:
+      name:
+        values:
+          - "lamp"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "{name} uit[ ]schakelen"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    for sentence in ("lamp uitschakelen", "lamp uit schakelen"):
+        assert recognize(sentence, intents) is not None, sentence
+
+    # The matcher breaks "-"/"_" apart, so a hyphenated input still matches a
+    # template written with a space. A decoy template keeps any
+    # "nothing matched, try everything" fallback from hiding a mistake.
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "turn on the living room light"
+      DecoyIntent:
+        data:
+          - sentences:
+              - "turn on the living-room light [now]"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    for sentence in ("turn on the living-room light", "turn on the living_room light"):
+        intent_names = {r.intent.name for r in recognize_all(sentence, intents)}
+        assert "TestIntent" in intent_names, sentence
+
+    # A skip word can be a real part of a template.
+    yaml_text = """
+    language: "en"
+    skip_words:
+      - "i want"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "i want to watch tv"
+      DecoyIntent:
+        data:
+          - sentences:
+              - "to watch tv"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    intent_names = {r.intent.name for r in recognize_all("i want to watch tv", intents)}
+    assert "TestIntent" in intent_names
+
+
+def test_required_fragment_prefilter_rejects() -> None:
+    """The prefilter must still skip templates that cannot match."""
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "(open|close) the door"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    assert recognize("open the door", intents) is not None
+    assert recognize("close the door", intents) is not None
+    assert recognize("smash the door", intents) is None
+
+
+def test_range_multi_digit_after_wildcard() -> None:
+    """A multi-digit number after an open wildcard must not be truncated."""
+    yaml_text = """
+    language: "en"
+    lists:
+      query:
+        wildcard: true
+      num:
+        range:
+          from: 1
+          to: 500
+          words: false
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "play {query} {num}"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    for sentence, number in (
+        ("play song 7", 7),
+        ("play song 42", 42),
+        ("play song 137", 137),
+    ):
+        result = recognize(sentence, intents)
+        assert result is not None, sentence
+        assert result.entities["num"].value == number, sentence
+        assert result.entities["query"].value == "song", sentence
+
+
+def test_wildcard_not_corrupted_by_number_words() -> None:
+    """An open wildcard must not accumulate text from other number candidates."""
+    yaml_text = """
+    language: "en"
+    lists:
+      query:
+        wildcard: true
+      num:
+        range:
+          from: 1
+          to: 10
+          digits: false
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "play {query} {num}"
+    """
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    # "one" and "two" are also number words, so the trie yields several
+    # candidates and the wildcard is visited more than once.
+    result = recognize("play one two three", intents)
+    assert result is not None
+    assert result.entities["num"].value == 3
+    assert result.entities["query"].value == "one two"
+
+    result = recognize("play one two three four", intents)
+    assert result is not None
+    assert result.entities["num"].value == 4
+    assert result.entities["query"].value == "one two three"
+
+
+def test_text_spans_index_original_text() -> None:
+    """text_span must delimit the region of the original text it came from.
+
+    Matching runs on text that has had punctuation and skip words removed and
+    whitespace collapsed, so spans have to be mapped back. The slice equals
+    entity.text except where normalization rewrote characters inside it (a
+    collapsed whitespace run, a typographic apostrophe).
+    """
+    yaml_text = """
+    language: "en"
+    skip_words:
+      - "please"
+      - "the"
+    lists:
+      album:
+        wildcard: true
+      brightness:
+        range:
+          from: 0
+          to: 100
+      name:
+        values:
+          - "kitchen light"
+          - "A.C."
+    intents:
+      Play:
+        data:
+          - sentences:
+              - "play {album}"
+      Bright:
+        data:
+          - sentences:
+              - "set {name} to {brightness} percent"
+      Turn:
+        data:
+          - sentences:
+              - "turn on {name}"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    sentences = [
+        "turn on kitchen light",
+        "turn on the kitchen light",
+        "please turn on the kitchen light",
+        "Turn on KITCHEN LIGHT!",
+        "turn on A.C.",
+        "set kitchen light to 42 percent",
+        "set the kitchen light to 7 percent",
+        "play the white album",
+        "  play the white album, please  ",
+        "turn on kitchen-light",
+    ]
+
+    checked = 0
+    for sentence in sentences:
+        for result in recognize_all(sentence, intents):
+            for entity in result.entities_list:
+                if entity.text_span is None:
+                    continue
+
+                start, end = entity.text_span
+                assert 0 <= start <= end <= len(sentence), (sentence, entity.name)
+
+                # Normalizing the slice the same way the matcher normalizes
+                # input must reproduce entity.text exactly. The raw slice can
+                # still differ (a collapsed whitespace run, a stripped comma),
+                # because the span delimits the *source* of the entity.
+                sliced = sentence[start:end]
+                assert (
+                    normalize_for_matching(sliced).text.lower()
+                    == entity.text.strip().lower()
+                ), (sentence, entity.name, sliced, entity.text)
+                checked += 1
+
+    assert checked > 0
+
+
+def test_empty_slot_list_value_never_matches() -> None:
+    """A slot list value with no text must not match.
+
+    An empty value matches at any position without consuming text, yielding an
+    entity with an empty value. Lists built from user data (entity aliases, for
+    example) can easily contain one.
+    """
+    yaml_text = """
+    language: "en"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "turn on {name}"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    slot_lists: Dict[str, SlotList] = {
+        "name": TextSlotList.from_tuples(
+            [("", "empty"), ("  ", "whitespace"), ("kitchen light", "light.kitchen")],
+            allow_template=False,
+        )
+    }
+
+    results = list(
+        recognize_all("turn on kitchen light", intents, slot_lists=slot_lists)
+    )
+    assert len(results) == 1
+    assert results[0].entities["name"].value == "light.kitchen"
+
+    # The empty values must not let an otherwise-unmatched sentence through.
+    assert recognize("turn on ", intents, slot_lists=slot_lists) is None
+    assert recognize("turn on bedroom lamp", intents, slot_lists=slot_lists) is None
