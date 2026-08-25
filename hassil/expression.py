@@ -18,7 +18,7 @@ _MAX_CLAUSE_DEPTH = 24
 
 
 @dataclass
-class Expression(ABC):
+class Expression:
     """Base class for expressions."""
 
 
