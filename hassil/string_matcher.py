@@ -578,6 +578,15 @@ def match_expression(
                         candidate_values = text_list.get_candidates(anchored_text)
 
                 for slot_value in candidate_values:
+                    if isinstance(slot_value.text_in, TextChunk) and (
+                        not slot_value.text_in.text.strip()
+                    ):
+                        # An empty value matches at any position without
+                        # consuming text, producing an entity with no text at
+                        # all. Callers that build lists from user data (entity
+                        # aliases, for example) can easily end up with one.
+                        continue
+
                     # Filter possible values with required/excluded context
                     if required_context and (
                         not check_required_context(

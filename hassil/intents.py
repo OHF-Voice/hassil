@@ -164,15 +164,18 @@ class TextSlotList(SlotList):
         for value in self.values:
             key: Optional[str] = None
             if isinstance(value.text_in, TextChunk):
+                if not value.text_in.text.strip():
+                    # Never matches (see match_expression), so don't offer it.
+                    continue
+
                 # Leading whitespace is stripped by the matcher at a word start.
                 text = value.text_in.text.lstrip()
-                if text:
-                    folded = text.casefold()
-                    if len(folded) == len(text):
-                        key = folded
+                folded = text.casefold()
+                if len(folded) == len(text):
+                    key = folded
 
             if key is None:
-                # Templates, empty values, and values that do not fold cleanly.
+                # Templates and values that do not fold cleanly.
                 unindexed.append(value)
             else:
                 trie.insert(key, value)
