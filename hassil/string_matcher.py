@@ -363,12 +363,14 @@ def match_expression(
                 # allocate a translated copy of the remaining text on *every*
                 # failed chunk match, which dominates matching cost even though
                 # the vast majority of inputs contain no "-" or "_" at all.
+                #
+                # When the text does contain one, translate in place exactly as
+                # before: the wildcard and unmatched-entity branches below also
+                # search the broken-apart text, so they must see it too.
                 end_pos = None
                 if ("-" in context_text) or ("_" in context_text):
-                    broken_text = context_text.translate(BREAK_WORDS_TABLE)
-                    end_pos = match_start(broken_text, chunk_text)
-                    if end_pos is not None:
-                        context_text = broken_text
+                    context_text = context_text.translate(BREAK_WORDS_TABLE)
+                    end_pos = match_start(context_text, chunk_text)
 
                 if end_pos is not None:
                     context_text = context_text[end_pos:]
