@@ -269,7 +269,14 @@ class IntentDataSettings:
     """Settings for intent data."""
 
     filter_with_regex: bool = True
-    """Use regular expressions compiled from sentence patterns to filter possible matches."""
+    """Deprecated and ignored.
+
+    Sentence templates are now pre-filtered by the literal text they require
+    (see Sentence.get_required_clauses), which is a sound filter: it only ever
+    skips templates that provably cannot match. The old regex filter could drop
+    templates that *would* have matched, so languages had to opt out of it. The
+    setting is still parsed so existing YAML keeps loading.
+    """
 
 
 @dataclass(frozen=True)
@@ -396,7 +403,14 @@ class IntentsSettings:
     """True if whitespace should be ignored during matching."""
 
     filter_with_regex: bool = True
-    """Use regular expressions compiled from sentence patterns to filter possible matches."""
+    """Deprecated and ignored.
+
+    Sentence templates are now pre-filtered by the literal text they require
+    (see Sentence.get_required_clauses), which is a sound filter: it only ever
+    skips templates that provably cannot match. The old regex filter could drop
+    templates that *would* have matched, so languages had to opt out of it. The
+    setting is still parsed so existing YAML keeps loading.
+    """
 
 
 @dataclass

@@ -244,6 +244,11 @@ class Sentence:
         return self.expression.list_names(expansion_rules)  # pylint: disable=no-member
 
     def compile(self, expansion_rules: Dict[str, Sentence]) -> None:
+        """Deprecated: compile this template to a filtering regex.
+
+        No longer used by the matcher, which pre-filters with
+        get_required_clauses instead. Kept for API compatibility.
+        """
         if self.pattern is not None:
             # Already compiled
             return
