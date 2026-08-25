@@ -46,7 +46,7 @@ from .util import (
 
 INTEGER_START = re.compile(r"^(\s*-?[0-9]+)")
 FLOAT_START = re.compile(r"^(\s*-?[0-9]+(?:[.,][0-9]+)?)")
-INTEGER_ANYWHERE = re.compile(r"(\s*-?[0-9])")
+INTEGER_ANYWHERE = re.compile(r"(\s*-?[0-9]+)")
 FLOAT_ANYWHERE = re.compile(r"(\s*-?[0-9]+(?:[.,][0-9]+)?)")
 BREAK_WORDS_TABLE = str.maketrans("-_", "  ")
 
@@ -805,17 +805,16 @@ def match_expression(
                                     original_text=context.original_text,
                                 )
                             else:
-                                # Wildcard consumes text before number
-                                if wildcard.is_wildcard_open:
-                                    wildcard.text += context.text[
-                                        : number_match.end() - 1
-                                    ]
-                                    wildcard.value = wildcard.text
-                                    if wildcard.text_span is not None:
-                                        wildcard.text_span = (
-                                            wildcard.text_span[0],
-                                            wildcard.text_span[0] + len(wildcard.text),
-                                        )
+                                # Wildcard consumes text before the number.
+                                #
+                                # Build a replacement entity instead of mutating
+                                # the open wildcard in place: `entities` lists are
+                                # shared by reference between yielded contexts, so
+                                # mutating would leak this iteration's text into
+                                # every other match derived from the same wildcard.
+                                entities[-2] = _extend_wildcard(
+                                    wildcard, context.text[: number_match.start(1)]
+                                )
 
                                 yield MatchContext(
                                     text=context.text[number_match.end() :],
@@ -893,6 +892,10 @@ def match_expression(
                                     # string isn't at the start of the text.
                                     continue
 
+                                # A number word was found, so don't also report
+                                # this slot as "not a number" below.
+                                words_match = True
+
                                 entities = context.entities + [
                                     MatchEntity(
                                         name=list_ref.slot_name,
@@ -925,9 +928,14 @@ def match_expression(
                                         TextChunk(number_text),
                                     )
                                 else:
-                                    # Wildcard consumes text before number
-                                    wildcard.text += context.text[:number_start_pos]
-                                    wildcard.value = wildcard.text
+                                    # Wildcard consumes text before the number.
+                                    # Replace rather than mutate: the trie can
+                                    # yield several numbers, and mutating would
+                                    # accumulate every earlier candidate's text
+                                    # into this one.
+                                    entities[-2] = _extend_wildcard(
+                                        wildcard, context.text[:number_start_pos]
+                                    )
                                     yield from match_expression(
                                         settings,
                                         MatchContext(
@@ -1024,6 +1032,32 @@ def match_expression(
         )
     else:
         raise ValueError(f"Unexpected expression: {expression}")
+
+
+def _extend_wildcard(wildcard: MatchEntity, extra_text: str) -> MatchEntity:
+    """Return a closed copy of an open wildcard with extra text appended.
+
+    Returning a copy matters because ``MatchContext.entities`` lists are shared by
+    reference across yielded contexts. Mutating an open wildcard in place makes
+    the text appended for one candidate match visible to every other candidate
+    derived from the same wildcard, which corrupts the value (and compounds when
+    several candidates are produced in a loop).
+    """
+    text = wildcard.text + extra_text
+    text_span = wildcard.text_span
+    if text_span is not None:
+        text_span = (text_span[0], text_span[0] + len(text))
+
+    return MatchEntity(
+        name=wildcard.name,
+        value=text,
+        text=text,
+        metadata=wildcard.metadata,
+        is_wildcard=True,
+        is_wildcard_open=False,  # always close
+        is_wildcard_end_of_word=wildcard.is_wildcard_end_of_word,
+        text_span=text_span,
+    )
 
 
 def _build_range_trie(language: str, range_list: RangeSlotList) -> Trie:
