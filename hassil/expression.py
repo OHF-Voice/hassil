@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from abc import ABC
 from dataclasses import dataclass, field
 from typing import Dict, FrozenSet, Iterable, Iterator, List, Optional, Set, Tuple
 
@@ -334,7 +333,12 @@ def _required_clauses(
         # present. Pick the smallest clause per branch and OR them together.
         merged: Set[str] = set()
         for branch in per_branch:
-            merged.update(min(branch, key=len))
+            smallest = next(iter(branch))
+            for clause in branch:
+                if len(clause) < len(smallest):
+                    smallest = clause
+
+            merged.update(smallest)
 
         return {frozenset(merged)}
 

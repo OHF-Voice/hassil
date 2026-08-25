@@ -194,7 +194,9 @@ class TextSlotList(SlotList):
         assert self._unindexed_values is not None
 
         folded = text.casefold()
-        candidates = [value for _end, _key, value in self._value_trie.find_prefixes(folded)]
+        candidates = [
+            value for _end, _key, value in self._value_trie.find_prefixes(folded)
+        ]
 
         if ("-" in folded) or ("_" in folded):
             # The matcher also retries with "-"/"_" rewritten to spaces, so a
