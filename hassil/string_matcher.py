@@ -356,9 +356,19 @@ def match_expression(
                 # No text left to match, so extra whitespace is OK to skip
                 yield context
             else:
-                # Try breaking words apart
-                context_text = context_text.translate(BREAK_WORDS_TABLE)
-                end_pos = match_start(context_text, chunk_text)
+                # Try breaking words apart.
+                #
+                # Only worth attempting if the remaining text actually contains a
+                # character that BREAK_WORDS_TABLE rewrites. Without this guard we
+                # allocate a translated copy of the remaining text on *every*
+                # failed chunk match, which dominates matching cost even though
+                # the vast majority of inputs contain no "-" or "_" at all.
+                end_pos = None
+                if ("-" in context_text) or ("_" in context_text):
+                    broken_text = context_text.translate(BREAK_WORDS_TABLE)
+                    end_pos = match_start(broken_text, chunk_text)
+                    if end_pos is not None:
+                        context_text = broken_text
 
                 if end_pos is not None:
                     context_text = context_text[end_pos:]
@@ -547,7 +557,25 @@ def match_expression(
                     required_context = context.intent_data.requires_context
                     excluded_context = context.intent_data.excludes_context
 
-                for slot_value in text_list.values:
+                # Narrow the candidate values by the first character of the
+                # remaining text. Only valid when the value has to match right
+                # here: an open wildcard or unmatched entity lets the matcher
+                # skip ahead in the text, so any value could still match.
+                candidate_values = text_list.values
+                if (
+                    (wildcard is None)
+                    and (not settings.ignore_whitespace)
+                    and context.is_start_of_word
+                    and (
+                        (not settings.allow_unmatched_entities)
+                        or (context.get_open_entity() is None)
+                    )
+                ):
+                    anchored_text = context.text.lstrip()
+                    if anchored_text:
+                        candidate_values = text_list.get_candidates(anchored_text[0])
+
+                for slot_value in candidate_values:
                     # Filter possible values with required/excluded context
                     if required_context and (
                         not check_required_context(

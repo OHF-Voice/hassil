@@ -4,7 +4,16 @@ import collections.abc
 import itertools
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, MutableSequence, Optional, Tuple
+from typing import (
+    Any,
+    Dict,
+    FrozenSet,
+    Iterable,
+    List,
+    MutableSequence,
+    Optional,
+    Tuple,
+)
 
 from .expression import Expression, ListReference, Sentence, Sequence
 from .intents import Intent, IntentData, Intents, SlotList, WildcardSlotList
@@ -161,6 +170,24 @@ def recognize_all(
 
     text_keywords = text_no_skip_words.split()
 
+    # Haystack for the required-fragment prefilter (see
+    # Sentence.get_required_clauses). Both candidate texts are included because
+    # removing skip words can join characters that were not adjacent before
+    # (in ignore_whitespace mode), so neither text's fragments are a subset of
+    # the other's.
+    #
+    # The matcher's break-words fallback needs no variant here: it only rewrites
+    # "-"/"_" in the input to spaces, and a whitespace-free fragment inside the
+    # rewritten text always lies within a "-"/"_"-free run of the original.
+    prefilter_haystack = (
+        f"{text_with_skip_words.casefold()}\n{text_no_skip_words.casefold()}"
+    )
+
+    if intents.settings.ignore_whitespace:
+        # The matcher drops whitespace between CJK characters on both sides, so a
+        # template fragment may only appear in the stripped form of the input.
+        prefilter_haystack += "\n" + CJK_WHITESPACE.sub("", prefilter_haystack)
+
     if slot_lists is None:
         slot_lists = intents.slot_lists
     else:
@@ -228,35 +255,31 @@ def recognize_all(
 
             available_intents.append((intent, intent_data, match_settings, None))
 
-    # Filter with regex
-    if intents.settings.filter_with_regex and (not allow_unmatched_entities):
-        matching_intents: MutableSequence[
-            Tuple[Intent, IntentData, MatchSettings, Optional[List[Sentence]]]
-        ] = []
+    # Skip sentence templates whose required literal text is missing from the
+    # input. Unlike a regex built from the template, this is a sound filter: a
+    # template is only dropped when it provably cannot match, so no result is
+    # lost. It therefore does not need a "nothing matched, try everything again"
+    # fallback, and applies with allow_unmatched_entities too.
+    filtered_intents: MutableSequence[
+        Tuple[Intent, IntentData, MatchSettings, Optional[List[Sentence]]]
+    ] = []
 
-        for intent, intent_data, match_settings, _intent_sentences in available_intents:
-            if not intent_data.settings.filter_with_regex:
-                # All sentences
-                matching_intents.append((intent, intent_data, match_settings, None))
-                continue
+    for intent, intent_data, match_settings, _intent_sentences in available_intents:
+        matching_intent_sentences = [
+            intent_sentence
+            for intent_sentence in intent_data.sentences
+            if _has_required_fragments(
+                intent_sentence.get_required_clauses(match_settings.expansion_rules),
+                prefilter_haystack,
+            )
+        ]
 
-            matching_intent_sentences = []
-            for intent_sentence in intent_data.sentences:
-                # Compile to regex once
-                intent_sentence.compile(match_settings.expansion_rules)
-                assert intent_sentence.pattern is not None
+        if matching_intent_sentences:
+            filtered_intents.append(
+                (intent, intent_data, match_settings, matching_intent_sentences)
+            )
 
-                regex_match = intent_sentence.pattern.match(text_no_skip_words)
-                if regex_match is not None:
-                    matching_intent_sentences.append(intent_sentence)
-
-            if matching_intent_sentences:
-                matching_intents.append(
-                    (intent, intent_data, match_settings, matching_intent_sentences)
-                )
-
-        if matching_intents:
-            available_intents = matching_intents
+    available_intents = filtered_intents
 
     # Fall back to string matcher
     if intents.settings.ignore_whitespace:
@@ -350,6 +373,22 @@ def recognize_all(
                     default_response=default_response,
                     allow_unmatched_entities=allow_unmatched_entities,
                 )
+
+
+def _has_required_fragments(
+    required_clauses: FrozenSet[FrozenSet[str]], haystack: str
+) -> bool:
+    """Return True if the haystack satisfies every clause (see get_required_clauses)."""
+    for clause in required_clauses:
+        for fragment in clause:
+            if fragment in haystack:
+                break
+        else:
+            # No fragment from this clause is present, so the template
+            # cannot possibly match.
+            return False
+
+    return True
 
 
 def _process_match_contexts(

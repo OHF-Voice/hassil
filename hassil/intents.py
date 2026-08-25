@@ -133,6 +133,84 @@ class TextSlotList(SlotList):
 
     values: List[TextSlotValue]
 
+    _first_char_index: Optional[Dict[str, List[TextSlotValue]]] = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    """Values bucketed by the first character of their input text (lazily built)."""
+
+    _unindexed_values: Optional[List[TextSlotValue]] = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    """Values that cannot be bucketed and must always be tried."""
+
+    @staticmethod
+    def _bucket_key(char: str) -> Optional[str]:
+        """Return the index bucket for a first character, or None if not indexable.
+
+        Only ASCII is bucketed. Matching is case-insensitive via ``re.IGNORECASE``,
+        whose equivalence classes for non-ASCII characters do not always agree with
+        ``str.lower()`` (e.g. ``ſ`` matches ``s``, ``İ`` lowercases to two
+        characters). Rather than reimplement those rules, non-ASCII first
+        characters go into the always-try bucket, which stays small in practice.
+        """
+        if not char.isascii():
+            return None
+
+        # "-" and "_" are rewritten by the matcher's break-words fallback, so a
+        # value starting with one of them is not safely indexable.
+        if char in ("-", "_"):
+            return None
+
+        return char.lower()
+
+    def _build_index(self) -> None:
+        """Bucket values by the first character of their input text."""
+        index: Dict[str, List[TextSlotValue]] = {}
+        unindexed: List[TextSlotValue] = []
+
+        for value in self.values:
+            key: Optional[str] = None
+            if isinstance(value.text_in, TextChunk):
+                # Leading whitespace is stripped by the matcher at a word start.
+                text = value.text_in.text.lstrip()
+                if text:
+                    key = TextSlotList._bucket_key(text[0])
+
+            if key is None:
+                # Templates, empty values, and anything not safely indexable.
+                unindexed.append(value)
+            else:
+                index.setdefault(key, []).append(value)
+
+        self._first_char_index = index
+        self._unindexed_values = unindexed
+
+    def get_candidates(self, first_char: str) -> List[TextSlotValue]:
+        """Return values that could match text starting with ``first_char``.
+
+        Falls back to every value when the character cannot be indexed. Only
+        valid when the matcher is anchored at the start of the remaining text
+        (i.e. no open wildcard or unmatched entity that may skip ahead).
+        """
+        key = TextSlotList._bucket_key(first_char)
+        if key is None:
+            return self.values
+
+        if self._first_char_index is None:
+            self._build_index()
+
+        assert self._first_char_index is not None
+        assert self._unindexed_values is not None
+
+        bucket = self._first_char_index.get(key)
+        if not bucket:
+            return self._unindexed_values
+
+        if not self._unindexed_values:
+            return bucket
+
+        return bucket + self._unindexed_values
+
     @staticmethod
     def from_strings(
         strings: Iterable[str],
