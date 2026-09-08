@@ -50,6 +50,18 @@ INTEGER_ANYWHERE = re.compile(r"(\s*-?[0-9]+)")
 FLOAT_ANYWHERE = re.compile(r"(\s*-?[0-9]+(?:[.,][0-9]+)?)")
 BREAK_WORDS_TABLE = str.maketrans("-_", "  ")
 
+# Characters that end a word without a space following them.
+#
+# Languages with elision attach the article directly to the next word:
+# "nell'ingresso" (it), "l'entrée" (fr), "l'aigua" (ca). Sentence templates put
+# a literal space after the article, as in "<in> [<the>] {area}", so unless the
+# apostrophe is treated as ending a word the elided form only matches when the
+# speaker writes "nell' ingresso", which nobody does.
+#
+# Both the ASCII apostrophe and the typographic one are included: keyboards and
+# autocorrect disagree about which they produce, and the speaker did not choose.
+WORD_END_CHARS = (" ", "'", "’")
+
 # lang -> number -> words
 _RANGE_TRIE_CACHE: Dict[
     str, Dict[Tuple[int, int, int, Optional[RangeFractionType]], Trie]
@@ -337,7 +349,7 @@ def match_expression(
                 yield MatchContext(
                     text=context_text,
                     # must use chunk.text because it hasn't been stripped
-                    is_start_of_word=chunk.text.endswith(" "),
+                    is_start_of_word=chunk.text.endswith(WORD_END_CHARS),
                     text_chunks_matched=text_chunks_matched,
                     text_index=base_index + end_pos,
                     # Copy over
