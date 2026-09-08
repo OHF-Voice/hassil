@@ -164,6 +164,92 @@ intents:
         assert result.entities["name"].value == "climate.ac"
 
 
+def test_elided_article_without_space():
+    """An elided article attaches to the next word: "nell'ingresso", "l'entrée"."""
+    # Shaped like the real it/fr templates, where the expansion rule carries its
+    # own trailing space and the sentence adds another one before the slot.
+    yaml_text = """
+language: "it"
+intents:
+  GetState:
+    data:
+      - sentences:
+          - "quante luci sono accese <in> [<the>] {area}"
+expansion_rules:
+  in: "(dentro |in | ne[l |i |gli |llo |lla |lle |ll'[ ]])"
+  the: "(l(o |a |e )|i[l] |gli |l'[ ])"
+"""
+    with io.StringIO(yaml_text) as yaml_file:
+        intents = Intents.from_yaml(yaml_file)
+
+    slot_lists = {
+        "area": TextSlotList.from_tuples(
+            [("ingresso", "area.ingresso"), ("soggiorno", "area.soggiorno")]
+        )
+    }
+
+    # Elided, as the language is actually written and spoken.
+    for text in (
+        "quante luci sono accese nell'ingresso",
+        "quante luci sono accese nell’ingresso",
+        # Still accepted with a space, so existing sentences keep matching.
+        "quante luci sono accese nell' ingresso",
+    ):
+        result = recognize(text, intents, slot_lists=slot_lists)
+        assert result is not None, text
+        assert result.entities["area"].value == "area.ingresso", text
+
+    # Unelided forms must not regress.
+    for text in (
+        "quante luci sono accese nel soggiorno",
+        "quante luci sono accese in soggiorno",
+        "quante luci sono accese dentro il soggiorno",
+    ):
+        result = recognize(text, intents, slot_lists=slot_lists)
+        assert result is not None, text
+        assert result.entities["area"].value == "area.soggiorno", text
+
+    # An apostrophe does not license a missing word.
+    assert (
+        recognize("quante luci sono accese nell'atrio", intents, slot_lists=slot_lists)
+        is None
+    )
+
+
+def test_elided_article_before_name():
+    """The same applies to a name: "l'aria condizionata è accesa"."""
+    yaml_text = """
+language: "it"
+intents:
+  GetState:
+    data:
+      - sentences:
+          - "[<the>] {name} è accesa"
+expansion_rules:
+  the: "(l(o |a |e )|i[l] |gli |l'[ ])"
+"""
+    with io.StringIO(yaml_text) as yaml_file:
+        intents = Intents.from_yaml(yaml_file)
+
+    slot_lists = {
+        "name": TextSlotList.from_tuples(
+            [
+                ("aria condizionata", "climate.ac"),
+                ("lavastoviglie", "switch.dishwasher"),
+            ]
+        )
+    }
+
+    for text in ("l'aria condizionata è accesa", "l’aria condizionata è accesa"):
+        result = recognize(text, intents, slot_lists=slot_lists)
+        assert result is not None, text
+        assert result.entities["name"].value == "climate.ac", text
+
+    result = recognize("la lavastoviglie è accesa", intents, slot_lists=slot_lists)
+    assert result is not None
+    assert result.entities["name"].value == "switch.dishwasher"
+
+
 # pylint: disable=redefined-outer-name
 def test_brightness_area(intents, slot_lists):
     result = recognize(
