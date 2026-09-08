@@ -390,8 +390,14 @@ def remove_punctuation(text: str) -> str:
 def normalize_for_matching(text: str) -> TrackedText:
     """Return match-ready text with a map back into the original text."""
     tracked = TrackedText(text)
-    _remove_punctuation(tracked)
+
+    # Normalize before removing punctuation. "’" is punctuation but "'" is not,
+    # so stripping first deletes a typographic apostrophe wherever a word ends
+    # ("nell’ ingresso" -> "nell ingresso") instead of folding it to the ASCII
+    # form the templates use. Normalizing first makes both apostrophes behave
+    # the same everywhere.
     _normalize_text(tracked)
+    _remove_punctuation(tracked)
     tracked.strip()
 
     return tracked
