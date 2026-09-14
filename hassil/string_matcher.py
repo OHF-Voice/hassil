@@ -58,9 +58,11 @@ BREAK_WORDS_TABLE = str.maketrans("-_", "  ")
 # apostrophe is treated as ending a word the elided form only matches when the
 # speaker writes "nell' ingresso", which nobody does.
 #
-# Both the ASCII apostrophe and the typographic one are included: keyboards and
-# autocorrect disagree about which they produce, and the speaker did not choose.
-WORD_END_CHARS = (" ", "'", "’")
+# Only the ASCII apostrophe is listed. A speaker typing the typographic one still
+# matches, because the text being matched has already been through
+# normalize_for_matching(), which rewrites "’" to "'". Templates are normalized
+# the same way when they are parsed, so chunk.text never ends with "’" either.
+WORD_END_CHARS = (" ", "'")
 
 # lang -> number -> words
 _RANGE_TRIE_CACHE: Dict[
