@@ -15,6 +15,13 @@ def test_punctuation():
     assert is_match("turn on the lights!", sentence)
 
 
+def test_dash():
+    """Test that a dash appended by speech-to-text does not break matching."""
+    sentence = parse_sentence("we are going to bed")
+    assert is_match("we are going to bed—", sentence)
+    assert is_match("we are going to bed –", sentence)
+
+
 def test_whitespace():
     sentence = parse_sentence("turn on the lights")
     assert is_match("  turn      on the     lights", sentence)
