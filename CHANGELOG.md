@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.12.1
+
+- Strip em/en dashes, horizontal bars, and ellipses from the start/end of words and input text, so a transcript like "we are going to bed—" still matches ([home-assistant/core#181789](https://github.com/home-assistant/core/issues/181789))
+    - The ASCII hyphen and minus sign are unaffected: they appear inside words and in front of negative numbers
+
 ## 3.12.0
 
 - Replace the regex sentence pre-filter with a filter on the literal text a template requires

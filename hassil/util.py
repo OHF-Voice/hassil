@@ -31,7 +31,13 @@ CJK_WHITESPACE = re.compile(rf"(?<=[{CJK}])\s+(?=[{CJK}])")
 
 TEMPLATE_SYNTAX = re.compile(r".*[(){}<>\[\]|@].*")
 
-PUNCTUATION_STR_NO_PERIOD = "。,，?¿？؟!¡！;；:：’"
+# Dashes that speech-to-text engines sometimes attach to a transcript
+# ("we are going to bed—"). The ASCII hyphen and the minus sign are deliberately
+# left out: they are used inside words ("air-conditioner") and in front of
+# negative numbers ("-5 degrees").
+DASH_STR = "—–―"
+
+PUNCTUATION_STR_NO_PERIOD = f"。,，?¿？؟!¡！;；:：’…{DASH_STR}"
 PUNCTUATION_PATTERN_NO_PERIOD = rf"[{re.escape(PUNCTUATION_STR_NO_PERIOD)}]+"
 PUNCTUATION_STR = f".{PUNCTUATION_STR_NO_PERIOD}"
 PUNCTUATION_PATTERN = rf"[{re.escape(PUNCTUATION_STR)}]+"
