@@ -2,6 +2,8 @@
 
 ## 3.12.1
 
+- Treat an apostrophe as ending a word, so elided articles match when they attach directly to the next word: "nell'ingresso" (it), "l'entrée" (fr), "l'aigua" (ca) ([#281](https://github.com/OHF-Voice/hassil/pull/281))
+    - Sentence templates put a literal space after the article, which previously made the spaced form the only one that matched ([OHF-Voice/intents#4183](https://github.com/OHF-Voice/intents/issues/4183))
 - Normalize text before removing punctuation when matching, so a typographic apostrophe at the end of a word ("nell’ ingresso") folds to the ASCII form templates use instead of being stripped ([#282](https://github.com/OHF-Voice/hassil/pull/282))
 - Strip em/en dashes, horizontal bars, and ellipses from the start/end of words and input text, so a transcript like "we are going to bed—" still matches ([home-assistant/core#181789](https://github.com/home-assistant/core/issues/181789))
     - The ASCII hyphen and minus sign are unaffected: they appear inside words and in front of negative numbers
