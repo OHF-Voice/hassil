@@ -35,7 +35,7 @@ dev = [
     "flake8==7.4.1",
     "mypy==1.19.0",
     "pylint==4.0.9",
-    "pytest==8.4.2",
+    "pytest==9.1.1",
     "tox==4.64.2",
     "types-PyYAML==6.0.12.20250915",
     "build==1.6.1",
