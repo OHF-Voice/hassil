@@ -37,7 +37,7 @@ dev = [
     "pylint==4.0.9",
     "pytest==9.1.1",
     "tox==4.64.2",
-    "types-PyYAML==6.0.12.20250915",
+    "types-PyYAML==6.0.12.20260906",
     "build==1.6.1",
     "home-assistant-intents==2026.9.17",
 ]
