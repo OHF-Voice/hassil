@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.12.2
+
+- Bump unicode-rbnf
+
 ## 3.12.1
 
 - Treat an apostrophe as ending a word, so elided articles match when they attach directly to the next word: "nell'ingresso" (it), "l'entrée" (fr), "l'aigua" (ca) ([#281](https://github.com/OHF-Voice/hassil/pull/281))
