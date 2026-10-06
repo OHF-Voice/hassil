@@ -39,7 +39,7 @@ dev = [
     "tox==4.64.7",
     "types-PyYAML==6.0.12.20260906",
     "build==1.6.1",
-    "home-assistant-intents==2026.9.17",
+    "home-assistant-intents==2026.9.30",
 ]
 
 [project.urls]
