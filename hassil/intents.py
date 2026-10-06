@@ -16,6 +16,26 @@ from .util import is_template, merge_dict, normalize_text
 
 _BREAK_WORDS_TABLE = str.maketrans("-_", "  ")
 
+# "ı" (U+0131) is the lower case of "I" in Turkish and related languages, but
+# str.casefold uses the locale-invariant mapping and leaves it alone. See
+# _index_fold.
+_INDEX_FOLD_TABLE = str.maketrans("\u0131", "i")
+
+
+def _index_fold(text: str) -> str:
+    """Fold text for the candidate index.
+
+    ``str.casefold`` maps "I" to "i" and leaves dotless "ı" alone, while
+    ``re.IGNORECASE`` -- which does the actual matching -- treats "I", "ı" and
+    "i" as equivalent. Folding "ı" to "i" as well keeps the index at least as
+    permissive as the matcher, so it can still only ever offer too many
+    candidates, never too few.
+
+    Without this, a Turkish value like "Işık" ("light") is keyed under "işık"
+    and is never found when the text says "ışık".
+    """
+    return text.casefold().translate(_INDEX_FOLD_TABLE)
+
 
 @dataclass
 class SlotList(ABC):
@@ -149,8 +169,8 @@ class TextSlotList(SlotList):
     def _build_index(self) -> None:
         """Index plain-text values in a trie keyed on their input text.
 
-        Values are keyed on ``str.casefold`` because text chunks are matched with
-        ``re.IGNORECASE``, and full case folding unifies at least as much as the
+        Values are keyed on :func:`_index_fold` because text chunks are matched
+        with ``re.IGNORECASE``, and that folding unifies at least as much as the
         simple folding ``re.IGNORECASE`` uses -- so the index can only ever offer
         too many candidates, never too few.
 
@@ -170,7 +190,7 @@ class TextSlotList(SlotList):
 
                 # Leading whitespace is stripped by the matcher at a word start.
                 text = value.text_in.text.lstrip()
-                folded = text.casefold()
+                folded = _index_fold(text)
                 if len(folded) == len(text):
                     key = folded
 
@@ -196,7 +216,7 @@ class TextSlotList(SlotList):
         assert self._value_trie is not None
         assert self._unindexed_values is not None
 
-        folded = text.casefold()
+        folded = _index_fold(text)
         candidates = [
             value for _end, _key, value in self._value_trie.find_prefixes(folded)
         ]

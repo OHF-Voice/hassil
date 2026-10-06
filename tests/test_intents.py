@@ -156,3 +156,28 @@ def test_nl_optional_whitespace():
             slot_lists=slot_lists,
             expansion_rules=expansion_rules,
         )
+
+
+def test_text_slot_list_turkish_dotless_i() -> None:
+    """Turkish "I" lower cases to dotless "ı", which str.casefold does not do.
+
+    The candidate index must stay at least as permissive as the ``re.IGNORECASE``
+    matching that follows it, otherwise a value like "Işık" ("light") is keyed
+    under "işık" and never offered for text that says "ışık".
+    """
+    names = TextSlotList.from_strings(["Işık", "Isıtıcı", "Lamba"])
+
+    # Spoken/typed in lower case, as speech-to-text produces it.
+    assert len(names.get_candidates("ışık kapat")) == 1
+    assert len(names.get_candidates("ısıtıcı kapat")) == 1
+
+    # Written the way the value is stored.
+    assert len(names.get_candidates("Işık kapat")) == 1
+
+    # A value with no "I" is unaffected.
+    assert len(names.get_candidates("lamba kapat")) == 1
+
+    # "İ" folds to two characters, so those values stay unindexed and are
+    # always offered; they were already reachable and must remain so.
+    dotted = TextSlotList.from_strings(["İstanbul"])
+    assert len(dotted.get_candidates("istanbul")) == 1
