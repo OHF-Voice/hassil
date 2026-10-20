@@ -163,7 +163,8 @@ def test_text_slot_list_turkish_dotless_i() -> None:
 
     The candidate index must stay at least as permissive as the ``re.IGNORECASE``
     matching that follows it, otherwise a value like "Işık" ("light") is keyed
-    under "işık" and never offered for text that says "ışık".
+    under "işık" and never offered for text that says "ışık". The same goes for
+    dotted "İ", which str.casefold expands to two characters.
     """
     names = TextSlotList.from_strings(["Işık", "Isıtıcı", "Lamba"])
 
@@ -177,7 +178,16 @@ def test_text_slot_list_turkish_dotless_i() -> None:
     # A value with no "I" is unaffected.
     assert len(names.get_candidates("lamba kapat")) == 1
 
-    # "İ" folds to two characters, so those values stay unindexed and are
-    # always offered; they were already reachable and must remain so.
+    # "İ" in the text, e.g. at the start of a typed sentence, must not throw the
+    # index out of step for values written with a plain "I" or "i".
+    typed = TextSlotList.from_strings(["Ikinci Lamba", "ikinci kat"])
+    assert len(typed.get_candidates("İkinci lamba kapat")) == 1
+    assert len(typed.get_candidates("İkinci kat kapat")) == 1
+
+    # Values with "İ" are indexed (not always offered), and found however the
+    # text writes the letter.
     dotted = TextSlotList.from_strings(["İstanbul"])
-    assert len(dotted.get_candidates("istanbul")) == 1
+    for text in ("istanbul", "İstanbul", "Istanbul", "ıstanbul"):
+        assert len(dotted.get_candidates(text)) == 1
+
+    assert not dotted.get_candidates("lamba kapat")

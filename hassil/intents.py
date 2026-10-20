@@ -16,25 +16,29 @@ from .util import is_template, merge_dict, normalize_text
 
 _BREAK_WORDS_TABLE = str.maketrans("-_", "  ")
 
-# "ı" (U+0131) is the lower case of "I" in Turkish and related languages, but
-# str.casefold uses the locale-invariant mapping and leaves it alone. See
-# _index_fold.
-_INDEX_FOLD_TABLE = str.maketrans("\u0131", "i")
+# Turkish and related languages pair "I" with dotless "ı" (U+0131) and dotted
+# "İ" (U+0130) with "i", but str.casefold uses the locale-invariant mapping.
+# See _index_fold.
+_INDEX_FOLD_TABLE = str.maketrans({"\u0130": "i", "\u0131": "i"})
 
 
 def _index_fold(text: str) -> str:
     """Fold text for the candidate index.
 
-    ``str.casefold`` maps "I" to "i" and leaves dotless "ı" alone, while
-    ``re.IGNORECASE`` -- which does the actual matching -- treats "I", "ı" and
-    "i" as equivalent. Folding "ı" to "i" as well keeps the index at least as
-    permissive as the matcher, so it can still only ever offer too many
-    candidates, never too few.
+    ``re.IGNORECASE`` -- which does the actual matching -- treats "I", "i",
+    dotless "ı" and dotted "İ" as equivalent. ``str.casefold`` maps "I" to "i",
+    leaves "ı" alone, and expands "İ" to two characters ("i" + U+0307), which
+    throws the trie walk out of step when "İ" is in the text. Folding "ı" and
+    "İ" to "i" *before* casefolding keeps the index at least as permissive as
+    the matcher, so it can still only ever offer too many candidates, never too
+    few. These four letters are the only ones ``re.IGNORECASE`` unifies and
+    ``str.casefold`` does not.
 
     Without this, a Turkish value like "Işık" ("light") is keyed under "işık"
-    and is never found when the text says "ışık".
+    and is never found when the text says "ışık", and a value typed as
+    "Ikinci Lamba" is never found for "İkinci lamba".
     """
-    return text.casefold().translate(_INDEX_FOLD_TABLE)
+    return text.translate(_INDEX_FOLD_TABLE).casefold()
 
 
 @dataclass
