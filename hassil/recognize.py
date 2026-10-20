@@ -24,6 +24,7 @@ from .util import (
     TrackedText,
     check_excluded_context,
     check_required_context,
+    fold_case,
     normalize_for_matching,
     remove_skip_words_tracked,
 )
@@ -186,7 +187,7 @@ def recognize_all(
     # "-"/"_" in the input to spaces, and a whitespace-free fragment inside the
     # rewritten text always lies within a "-"/"_"-free run of the original.
     prefilter_haystack = (
-        f"{text_with_skip_words.casefold()}\n{text_no_skip_words.casefold()}"
+        f"{fold_case(text_with_skip_words)}\n{fold_case(text_no_skip_words)}"
     )
 
     if intents.settings.ignore_whitespace:

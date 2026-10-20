@@ -2827,3 +2827,32 @@ def test_empty_slot_list_value_never_matches() -> None:
     # The empty values must not let an otherwise-unmatched sentence through.
     assert recognize("turn on ", intents, slot_lists=slot_lists) is None
     assert recognize("turn on bedroom lamp", intents, slot_lists=slot_lists) is None
+
+
+def test_turkish_i_template_prefilter() -> None:
+    """The template prefilter must fold the Turkish I like re.IGNORECASE does.
+
+    Otherwise a template is skipped before matching whenever the input writes
+    the letter in a different case from the template, e.g. in sentence case.
+    """
+    yaml_text = """
+    language: "tr"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "ışıkları aç"
+              - "ikinci kat aç"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    for text in (
+        "ışıkları aç",
+        "Işıkları aç",
+        "IŞIKLARI AÇ",
+        "ikinci kat aç",
+        "İkinci kat aç",
+    ):
+        assert recognize(text, intents) is not None, text
