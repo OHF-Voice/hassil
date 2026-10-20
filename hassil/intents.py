@@ -12,7 +12,7 @@ from yaml import safe_load
 from .expression import Expression, Sentence, TextChunk
 from .parse_expression import parse_sentence
 from .trie import Trie
-from .util import is_template, merge_dict, normalize_text
+from .util import fold_case, is_template, merge_dict, normalize_text
 
 _BREAK_WORDS_TABLE = str.maketrans("-_", "  ")
 
@@ -149,10 +149,10 @@ class TextSlotList(SlotList):
     def _build_index(self) -> None:
         """Index plain-text values in a trie keyed on their input text.
 
-        Values are keyed on ``str.casefold`` because text chunks are matched with
-        ``re.IGNORECASE``, and full case folding unifies at least as much as the
-        simple folding ``re.IGNORECASE`` uses -- so the index can only ever offer
-        too many candidates, never too few.
+        Values are keyed on :func:`~hassil.util.fold_case` because text chunks
+        are matched with ``re.IGNORECASE``, and that folding unifies at least as
+        much as the simple folding ``re.IGNORECASE`` uses -- so the index can only
+        ever offer too many candidates, never too few.
 
         Characters whose casefold is not a single character (``ß`` -> ``ss``)
         would misalign the trie walk, so those values are left unindexed rather
@@ -170,7 +170,7 @@ class TextSlotList(SlotList):
 
                 # Leading whitespace is stripped by the matcher at a word start.
                 text = value.text_in.text.lstrip()
-                folded = text.casefold()
+                folded = fold_case(text)
                 if len(folded) == len(text):
                     key = folded
 
@@ -196,7 +196,7 @@ class TextSlotList(SlotList):
         assert self._value_trie is not None
         assert self._unindexed_values is not None
 
-        folded = text.casefold()
+        folded = fold_case(text)
         candidates = [
             value for _end, _key, value in self._value_trie.find_prefixes(folded)
         ]

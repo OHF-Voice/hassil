@@ -51,6 +51,11 @@ PUNCTUATION_WORD = re.compile(rf"(?<=\W){PUNCTUATION_PATTERN}(?=\W)")
 
 INITIALISM_DOTS_AT_END = re.compile(r"\b(?:\w\.){2,}$")
 
+# Turkish and related languages pair "I" with dotless "ı" (U+0131) and dotted
+# "İ" (U+0130) with "i", but str.casefold uses the locale-invariant mapping.
+# See fold_case.
+_FOLD_CASE_TABLE = str.maketrans({"\u0130": "i", "\u0131": "i"})
+
 
 def merge_dict(
     base_dict: MutableMapping[Any, Any], new_dict: Mapping[Any, Any]
@@ -193,6 +198,27 @@ def normalize_text(text: str) -> str:
     _normalize_text(tracked)
 
     return tracked.text
+
+
+def fold_case(text: str) -> str:
+    """Fold case for filters that run ahead of ``re.IGNORECASE`` matching.
+
+    The slot value index and the template prefilter both compare folded text to
+    decide what the matcher should try, so the fold must unify at least as much
+    as ``re.IGNORECASE`` does. Then they can only ever let too much through,
+    never too little.
+
+    ``re.IGNORECASE`` treats "I", "i", dotless "ı" and dotted "İ" as equivalent.
+    ``str.casefold`` maps "I" to "i", leaves "ı" alone, and expands "İ" to two
+    characters ("i" + U+0307). Folding "ı" and "İ" to "i" *before* casefolding
+    closes the gap. These four letters are the only ones ``re.IGNORECASE``
+    unifies and ``str.casefold`` does not.
+
+    Without this, a Turkish value like "Işık" ("light") is never found when the
+    text says "ışık", and the template "ışıkları aç" is skipped for the input
+    "Işıkları aç".
+    """
+    return text.translate(_FOLD_CASE_TABLE).casefold()
 
 
 def is_template(text: str) -> bool:

@@ -2427,6 +2427,57 @@ def test_number_word_casing() -> None:
         assert result.entities["volume"].value == 50
 
 
+def test_number_word_turkish_i() -> None:
+    """Test number words written with any of I, i, dotless ı and dotted İ.
+
+    re.IGNORECASE treats these as one letter, so the number word lookup must
+    too. "İ" lower cases to two characters, so it must also not shift where a
+    number that comes after it is found.
+    """
+    yaml_text = """
+    language: "tr"
+    intents:
+      StartTimer:
+        data:
+          - sentences:
+              - "{minutes} dakika"
+      StartNamedTimer:
+        data:
+          - sentences:
+              - "{name} {minutes} dakika"
+    lists:
+      minutes:
+        range:
+          from: 1
+          to: 10
+      name:
+        wildcard: true
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    # "iki" (2) is written with a dotted i, "altı" (6) with a dotless ı
+    for number_word, number_value in (("iki", 2), ("altı", 6)):
+        for letter in ("I", "i", "\u0131", "\u0130"):
+            spoken = number_word.replace("i", letter).replace("\u0131", letter)
+
+            text = f"{spoken} dakika"
+            result = recognize(text, intents)
+            assert result is not None, text
+            assert result.intent.name == "StartTimer", text
+            assert result.entities["minutes"].value == number_value, text
+            assert result.entities["minutes"].text_span == (0, len(spoken)), text
+
+            text = f"İstanbul {spoken} dakika"
+            result = recognize(text, intents)
+            assert result is not None, text
+            assert result.intent.name == "StartNamedTimer", text
+            assert result.entities["name"].value == "İstanbul", text
+            assert result.entities["minutes"].value == number_value, text
+            assert result.entities["minutes"].text_span == (9, 9 + len(spoken)), text
+
+
 def test_wildcard_text_spans() -> None:
     """Test that text spans accurately capture wildcards."""
     yaml_text = """
@@ -2827,6 +2878,35 @@ def test_empty_slot_list_value_never_matches() -> None:
     # The empty values must not let an otherwise-unmatched sentence through.
     assert recognize("turn on ", intents, slot_lists=slot_lists) is None
     assert recognize("turn on bedroom lamp", intents, slot_lists=slot_lists) is None
+
+
+def test_turkish_i_template_prefilter() -> None:
+    """The template prefilter must fold the Turkish I like re.IGNORECASE does.
+
+    Otherwise a template is skipped before matching whenever the input writes
+    the letter in a different case from the template, e.g. in sentence case.
+    """
+    yaml_text = """
+    language: "tr"
+    intents:
+      TestIntent:
+        data:
+          - sentences:
+              - "ışıkları aç"
+              - "ikinci kat aç"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    for text in (
+        "ışıkları aç",
+        "Işıkları aç",
+        "IŞIKLARI AÇ",
+        "ikinci kat aç",
+        "İkinci kat aç",
+    ):
+        assert recognize(text, intents) is not None, text
 
 
 def test_required_keywords_ignore_case() -> None:
