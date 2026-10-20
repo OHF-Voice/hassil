@@ -2947,3 +2947,38 @@ def test_required_keywords_ignore_case() -> None:
     # Keywords are still required
     assert recognize("turn on lamp", intents) is None
     assert recognize("switch on light", intents) is None
+
+
+def test_required_keywords_turkish_i() -> None:
+    """Required keywords fold the Turkish I like re.IGNORECASE does."""
+    yaml_text = """
+    language: "tr"
+    intents:
+      TurnOn:
+        data:
+          - sentences:
+              - "{name} aç"
+            required_keywords:
+              - "ışık"
+              - "İkinci"
+    lists:
+      name:
+        wildcard: true
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    for text in (
+        # Dotless ı in the keyword
+        "ışık aç",
+        "Işık aç",
+        "IŞIK AÇ",
+        # Dotted İ in the keyword
+        "ikinci kat aç",
+        "İkinci kat aç",
+        "İKİNCİ KAT AÇ",
+    ):
+        assert recognize(text, intents) is not None, text
+
+    assert recognize("kapı aç", intents) is None

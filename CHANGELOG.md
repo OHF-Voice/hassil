@@ -3,7 +3,8 @@
 ## 3.12.2
 
 - Bump unicode-rbnf
-- Compare `required_keywords` without case, like the rest of matching, so "Turn on Light" is not skipped when the keyword is "light"
+- Compare `required_keywords` without case, like the rest of matching, so "Turn on Light" is not skipped when the keyword is "light" ([#311](https://github.com/OHF-Voice/hassil/pull/311))
+    - Uses `fold_case`, so the Turkish I matches in any case too ("IŞIK" for "ışık")
 
 ## 3.12.1
 

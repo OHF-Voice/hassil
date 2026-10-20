@@ -203,10 +203,10 @@ def normalize_text(text: str) -> str:
 def fold_case(text: str) -> str:
     """Fold case for filters that run ahead of ``re.IGNORECASE`` matching.
 
-    The slot value index and the template prefilter both compare folded text to
-    decide what the matcher should try, so the fold must unify at least as much
-    as ``re.IGNORECASE`` does. Then they can only ever let too much through,
-    never too little.
+    The slot value index, the template prefilter and the required keywords check
+    all compare folded text to decide what the matcher should try, so the fold
+    must unify at least as much as ``re.IGNORECASE`` does. Then they can only
+    ever let too much through, never too little.
 
     ``re.IGNORECASE`` treats "I", "i", dotless "ı" and dotted "İ" as equivalent.
     ``str.casefold`` maps "I" to "i", leaves "ı" alone, and expands "İ" to two
