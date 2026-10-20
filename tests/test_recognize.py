@@ -2827,3 +2827,43 @@ def test_empty_slot_list_value_never_matches() -> None:
     # The empty values must not let an otherwise-unmatched sentence through.
     assert recognize("turn on ", intents, slot_lists=slot_lists) is None
     assert recognize("turn on bedroom lamp", intents, slot_lists=slot_lists) is None
+
+
+def test_required_keywords_ignore_case() -> None:
+    """Required keywords are compared without case, like the rest of matching."""
+    yaml_text = """
+    language: "en"
+    intents:
+      TurnOn:
+        data:
+          - sentences:
+              - "turn on {name}"
+            required_keywords:
+              - "light"
+          - sentences:
+              - "switch on {name}"
+            required_keywords:
+              - "Lamp"
+    lists:
+      name:
+        wildcard: true
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    # Input case varies
+    for text in ("turn on light", "Turn on Light", "TURN ON LIGHT"):
+        result = recognize(text, intents)
+        assert result is not None, text
+        assert result.entities["name"].value == text.split()[-1], text
+
+    # Keyword case varies
+    for text in ("switch on lamp", "Switch on LAMP"):
+        result = recognize(text, intents)
+        assert result is not None, text
+        assert result.entities["name"].value == text.split()[-1], text
+
+    # Keywords are still required
+    assert recognize("turn on lamp", intents) is None
+    assert recognize("switch on light", intents) is None

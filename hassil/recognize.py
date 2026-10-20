@@ -174,7 +174,8 @@ def recognize_all(
     # "I want to watch TV"), so we also try matching with skip words left in.
     had_skip_words_removed = text_no_skip_words != text_with_skip_words
 
-    text_keywords = text_no_skip_words.split()
+    # Casefolded like IntentData.required_keywords, since matching ignores case
+    text_keywords = text_no_skip_words.casefold().split()
 
     # Haystack for the required-fragment prefilter (see
     # Sentence.get_required_clauses). Both candidate texts are included because
