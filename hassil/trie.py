@@ -7,6 +7,11 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
+# re.IGNORECASE treats "I", "i", dotless "ı" (U+0131) and dotted "İ" (U+0130) as
+# the same letter, but str.lower maps "I" to "i" (never "ı") and expands "İ" to
+# two characters ("i" + U+0307). See _fold_case.
+_TURKISH_I_TABLE = str.maketrans({"\u0130": "i", "\u0131": "i"})
+
 
 @dataclass
 class TrieNode:
@@ -25,13 +30,23 @@ class Trie:
         self.roots: Dict[str, TrieNode] = {}
         self._next_id = 0
 
+        # The same words keyed on _fold_case, built on demand by find
+        self._folded_roots: Optional[Dict[str, TrieNode]] = None
+
     def insert(self, text: str, value: Any) -> None:
         """Insert a word and value into the trie."""
-        current_node: Optional[TrieNode] = None
-        current_children: Optional[Dict[str, TrieNode]] = self.roots
+        self._folded_roots = None
+        self._insert(self.roots, text, text, value)
 
-        last_idx = len(text) - 1
-        for i, c in enumerate(text):
+    def _insert(
+        self, roots: Dict[str, TrieNode], key: str, text: str, value: Any
+    ) -> None:
+        """Insert value under key, recording text as the word that was found."""
+        current_node: Optional[TrieNode] = None
+        current_children: Optional[Dict[str, TrieNode]] = roots
+
+        last_idx = len(key) - 1
+        for i, c in enumerate(key):
             if current_children is None:
                 assert current_node is not None
                 current_node.children = current_children = {}
@@ -57,33 +72,29 @@ class Trie:
         word_boundaries: bool = False,
         ignore_case: bool = False,
     ) -> Iterable[Tuple[int, str, Any]]:
-        """Yield (end_pos, text, value) pairs of all words found in the string."""
-        visited: Set[int] = set()
-        if ignore_case:
-            text = text.lower()
+        """Yield (end_pos, text, value) pairs of all words found in the string.
 
+        With ignore_case, both the words and the string are folded with
+        _fold_case first. Since that never changes the length, end_pos is still a
+        position in the original string, and text is the word as it was inserted.
+        """
+        roots = self.roots
+        if ignore_case:
+            roots = self._get_folded_roots()
+            text = _fold_case(text)
+
+        visited: Set[int] = set()
         for i in range(len(text)):
             if word_boundaries and (not _is_word_boundary(text, i)):
                 continue
 
-            current_children = self.roots
+            current_children = roots
             current_position = i
 
             while current_position < len(text):
-                current_char = text[current_position]
-                node = current_children.get(current_char)
+                node = current_children.get(text[current_position])
                 if node is None:
-                    if not ignore_case:
-                        break
-
-                    if current_char.islower():
-                        current_char = current_char.upper()
-                    else:
-                        current_char = current_char.lower()
-
-                    node = current_children.get(current_char)
-                    if node is None:
-                        break
+                    break
 
                 match_end = current_position + 1
 
@@ -123,10 +134,41 @@ class Trie:
 
             current_children = node.children
 
+    def _get_folded_roots(self) -> Dict[str, TrieNode]:
+        """Return roots with every word in the trie inserted under _fold_case."""
+        folded_roots = self._folded_roots
+        if folded_roots is None:
+            folded_roots = {}
+            nodes = list(self.roots.values())
+            while nodes:
+                node = nodes.pop()
+                if node.text is not None:
+                    folded_text = _fold_case(node.text)
+                    for value in node.values or []:
+                        self._insert(folded_roots, folded_text, node.text, value)
+
+                if node.children:
+                    nodes.extend(node.children.values())
+
+            self._folded_roots = folded_roots
+
+        return folded_roots
+
     def next_id(self) -> int:
         current_id = self._next_id
         self._next_id += 1
         return current_id
+
+
+def _fold_case(text: str) -> str:
+    """Fold case for find(ignore_case=True) without changing the length of text.
+
+    find reports positions in the text it was given, so the folded text must line
+    up with the original character for character. Once the Turkish "İ" and "ı"
+    are mapped to "i", str.lower keeps the length of every string (str.casefold
+    does not: "ß" becomes "ss").
+    """
+    return text.translate(_TURKISH_I_TABLE).lower()
 
 
 def _is_boundary_category(text: str) -> bool:

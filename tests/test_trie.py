@@ -1,3 +1,5 @@
+import sys
+
 from hassil.trie import Trie
 
 
@@ -82,3 +84,49 @@ def test_find_ignore_case() -> None:
         assert list(trie.find(f"this is a {word}", ignore_case=True)) == [
             (14, "tEsT", 1)
         ], word
+
+
+def test_find_ignore_case_turkish_i() -> None:
+    """Test that ignore_case treats I, i, ı and İ as one letter, like re.IGNORECASE.
+
+    str.lower maps "I" to "i" (never "ı"), and expands "İ" to two characters.
+    """
+    turkish_i = ("I", "i", "\u0131", "\u0130")
+
+    for word_letter in turkish_i:
+        trie = Trie()
+        trie.insert(f"alt{word_letter}", 6)
+
+        for text_letter in turkish_i:
+            # The letter also comes before the word, so end_pos would be off if
+            # folding changed the length of the text.
+            text = f"{text_letter}ki alt{text_letter}"
+            assert list(trie.find(text, ignore_case=True)) == [
+                (len(text), f"alt{word_letter}", 6)
+            ], (word_letter, text_letter)
+
+            if text_letter != word_letter:
+                assert not list(trie.find(text)), (word_letter, text_letter)
+
+
+def test_find_ignore_case_after_insert() -> None:
+    """Test that words inserted after a case-insensitive find are found."""
+    trie = Trie()
+    trie.insert("altı", 6)
+    assert list(trie.find("ALTI", ignore_case=True)) == [(4, "altı", 6)]
+
+    trie.insert("İki", 2)
+    assert list(trie.find("iki ALTI", ignore_case=True)) == [
+        (3, "İki", 2),
+        (8, "altı", 6),
+    ]
+
+
+def test_find_ignore_case_end_pos() -> None:
+    """Test that ignore_case reports positions in the original text."""
+    trie = Trie()
+    trie.insert("word", 1)
+
+    # Every code point, including "İ", which str.lower turns into two
+    text = "".join(map(chr, range(sys.maxunicode + 1))) + " word"
+    assert list(trie.find(text, ignore_case=True)) == [(len(text), "word", 1)]
