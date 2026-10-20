@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, FrozenSet, Iterable, Iterator, List, Optional, Set, Tuple
 
-from .util import PUNCTUATION_STR
+from .util import PUNCTUATION_STR, fold_case
 
 INLINE_RANGE_PATTERN = re.compile(r"^(\d+)..(\d+)(?:,(\d+))?$")
 
@@ -215,9 +215,10 @@ class Sentence:
           fallback ("living-room" matching "living room") cannot cause a miss.
         - Fragments containing punctuation that ``remove_punctuation`` may strip
           from the input are dropped.
-        - Fragments are casefolded. ``str.casefold`` is at least as permissive as
-          the ``re.IGNORECASE`` matching used for text chunks, so the test can
-          only ever be too lenient, never too strict.
+        - Fragments are folded with ``fold_case``, which is at least as
+          permissive as the ``re.IGNORECASE`` matching used for text chunks, so
+          the test can only ever be too lenient, never too strict. Plain
+          ``str.casefold`` is not: it misses the Turkish I.
 
         Note: like ``compile``, the result is cached on first use, so a given
         Sentence object is assumed to always be used with the same expansion
@@ -309,7 +310,7 @@ def _text_clauses(text: str) -> Set[FrozenSet[str]]:
     clauses: Set[FrozenSet[str]] = set()
     for piece in text.split():
         if _PUNCTUATION_CHARS.isdisjoint(piece):
-            clauses.add(frozenset((piece.casefold(),)))
+            clauses.add(frozenset((fold_case(piece),)))
 
     return clauses
 

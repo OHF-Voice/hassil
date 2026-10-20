@@ -12,33 +12,9 @@ from yaml import safe_load
 from .expression import Expression, Sentence, TextChunk
 from .parse_expression import parse_sentence
 from .trie import Trie
-from .util import is_template, merge_dict, normalize_text
+from .util import fold_case, is_template, merge_dict, normalize_text
 
 _BREAK_WORDS_TABLE = str.maketrans("-_", "  ")
-
-# Turkish and related languages pair "I" with dotless "ı" (U+0131) and dotted
-# "İ" (U+0130) with "i", but str.casefold uses the locale-invariant mapping.
-# See _index_fold.
-_INDEX_FOLD_TABLE = str.maketrans({"\u0130": "i", "\u0131": "i"})
-
-
-def _index_fold(text: str) -> str:
-    """Fold text for the candidate index.
-
-    ``re.IGNORECASE`` -- which does the actual matching -- treats "I", "i",
-    dotless "ı" and dotted "İ" as equivalent. ``str.casefold`` maps "I" to "i",
-    leaves "ı" alone, and expands "İ" to two characters ("i" + U+0307), which
-    throws the trie walk out of step when "İ" is in the text. Folding "ı" and
-    "İ" to "i" *before* casefolding keeps the index at least as permissive as
-    the matcher, so it can still only ever offer too many candidates, never too
-    few. These four letters are the only ones ``re.IGNORECASE`` unifies and
-    ``str.casefold`` does not.
-
-    Without this, a Turkish value like "Işık" ("light") is keyed under "işık"
-    and is never found when the text says "ışık", and a value typed as
-    "Ikinci Lamba" is never found for "İkinci lamba".
-    """
-    return text.translate(_INDEX_FOLD_TABLE).casefold()
 
 
 @dataclass
@@ -173,10 +149,10 @@ class TextSlotList(SlotList):
     def _build_index(self) -> None:
         """Index plain-text values in a trie keyed on their input text.
 
-        Values are keyed on :func:`_index_fold` because text chunks are matched
-        with ``re.IGNORECASE``, and that folding unifies at least as much as the
-        simple folding ``re.IGNORECASE`` uses -- so the index can only ever offer
-        too many candidates, never too few.
+        Values are keyed on :func:`~hassil.util.fold_case` because text chunks
+        are matched with ``re.IGNORECASE``, and that folding unifies at least as
+        much as the simple folding ``re.IGNORECASE`` uses -- so the index can only
+        ever offer too many candidates, never too few.
 
         Characters whose casefold is not a single character (``ß`` -> ``ss``)
         would misalign the trie walk, so those values are left unindexed rather
@@ -194,7 +170,7 @@ class TextSlotList(SlotList):
 
                 # Leading whitespace is stripped by the matcher at a word start.
                 text = value.text_in.text.lstrip()
-                folded = _index_fold(text)
+                folded = fold_case(text)
                 if len(folded) == len(text):
                     key = folded
 
@@ -220,7 +196,7 @@ class TextSlotList(SlotList):
         assert self._value_trie is not None
         assert self._unindexed_values is not None
 
-        folded = _index_fold(text)
+        folded = fold_case(text)
         candidates = [
             value for _end, _key, value in self._value_trie.find_prefixes(folded)
         ]
