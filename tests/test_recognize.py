@@ -2907,3 +2907,78 @@ def test_turkish_i_template_prefilter() -> None:
         "İkinci kat aç",
     ):
         assert recognize(text, intents) is not None, text
+
+
+def test_required_keywords_ignore_case() -> None:
+    """Required keywords are compared without case, like the rest of matching."""
+    yaml_text = """
+    language: "en"
+    intents:
+      TurnOn:
+        data:
+          - sentences:
+              - "turn on {name}"
+            required_keywords:
+              - "light"
+          - sentences:
+              - "switch on {name}"
+            required_keywords:
+              - "Lamp"
+    lists:
+      name:
+        wildcard: true
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    # Input case varies
+    for text in ("turn on light", "Turn on Light", "TURN ON LIGHT"):
+        result = recognize(text, intents)
+        assert result is not None, text
+        assert result.entities["name"].value == text.split()[-1], text
+
+    # Keyword case varies
+    for text in ("switch on lamp", "Switch on LAMP"):
+        result = recognize(text, intents)
+        assert result is not None, text
+        assert result.entities["name"].value == text.split()[-1], text
+
+    # Keywords are still required
+    assert recognize("turn on lamp", intents) is None
+    assert recognize("switch on light", intents) is None
+
+
+def test_required_keywords_turkish_i() -> None:
+    """Required keywords fold the Turkish I like re.IGNORECASE does."""
+    yaml_text = """
+    language: "tr"
+    intents:
+      TurnOn:
+        data:
+          - sentences:
+              - "{name} aç"
+            required_keywords:
+              - "ışık"
+              - "İkinci"
+    lists:
+      name:
+        wildcard: true
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    for text in (
+        # Dotless ı in the keyword
+        "ışık aç",
+        "Işık aç",
+        "IŞIK AÇ",
+        # Dotted İ in the keyword
+        "ikinci kat aç",
+        "İkinci kat aç",
+        "İKİNCİ KAT AÇ",
+    ):
+        assert recognize(text, intents) is not None, text
+
+    assert recognize("kapı aç", intents) is None

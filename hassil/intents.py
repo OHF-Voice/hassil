@@ -314,7 +314,7 @@ class IntentData:
     """Metadata that will be passed into the result if matched."""
 
     required_keywords: Optional[Set[str]] = None
-    """Keywords that must be present for any sentence to match."""
+    """Keywords that must be present for any sentence to match (see fold_case)."""
 
     inferred_domain: Optional[str] = None
     """Domain inferred for nameless group commands (e.g., "light" for "turn on the lights")."""
@@ -510,7 +510,10 @@ class Intents:
                             wildcard_list_names=wildcard_list_names,
                             metadata=data_dict.get("metadata"),
                             required_keywords=(
-                                set(data_dict["required_keywords"])
+                                {
+                                    fold_case(keyword)
+                                    for keyword in data_dict["required_keywords"]
+                                }
                                 if "required_keywords" in data_dict
                                 else None
                             ),
