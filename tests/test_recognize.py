@@ -2515,6 +2515,60 @@ def test_number_word_german_eszett() -> None:
             assert result.entities["brightness"].text_span == (0, len(spoken)), text
 
 
+def test_text_spans_after_number_word() -> None:
+    """Test that text spans of slots after a range number word stay aligned.
+
+    The number word is consumed by matching it as a text chunk, so the span of
+    every later slot must line up the same way it does after digits.
+    """
+    yaml_text = """
+    language: "en"
+    intents:
+      SetBrightness:
+        data:
+          - sentences:
+              - "set {brightness} percent in {area}"
+      StartTimer:
+        data:
+          - sentences:
+              - "timer {minutes} minutes named {name}"
+              - "add {name} for {minutes} minutes in {area}"
+    lists:
+      brightness:
+        range:
+          from: 0
+          to: 100
+      minutes:
+        range:
+          from: 1
+          to: 100
+      name:
+        wildcard: true
+      area:
+        values:
+          - kitchen
+          - living room
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    for number in ("30", "thirty"):
+        for template in (
+            "set {number} percent in kitchen",
+            "timer {number} minutes named pizza",
+            "add pizza for {number} minutes in living room",
+        ):
+            text = template.format(number=number)
+            result = recognize(text, intents)
+            assert result is not None, text
+
+            for entity in result.entities.values():
+                assert entity.text_span is not None, text
+                start, end = entity.text_span
+                assert text[start:end] == entity.text, (text, entity.name)
+
+
 def test_wildcard_text_spans() -> None:
     """Test that text spans accurately capture wildcards."""
     yaml_text = """
