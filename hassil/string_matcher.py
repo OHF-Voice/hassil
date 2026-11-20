@@ -1098,17 +1098,24 @@ def _build_range_trie(language: str, range_list: RangeSlotList) -> Trie:
         used_words = set()
 
         for words in format_result.text_by_ruleset.values():
-            if words in used_words:
-                continue
+            # The trie folds case with str.lower to keep match positions aligned
+            # with the input, so unlike str.casefold it leaves "ß" alone. Insert
+            # an "ss" spelling as well, which is the standard substitute for "ß"
+            # (and the only spelling used in Switzerland), so a German number
+            # word such as "dreißig" is still found when the text says
+            # "dreissig".
+            for variant in (words, words.replace("ß", "ss")):
+                if variant in used_words:
+                    continue
 
-            range_trie.insert(words, range_value)
-            used_words.add(words)
+                range_trie.insert(variant, range_value)
+                used_words.add(variant)
 
-            words = words.translate(BREAK_WORDS_TABLE)
-            if words in used_words:
-                continue
+                broken = variant.translate(BREAK_WORDS_TABLE)
+                if broken in used_words:
+                    continue
 
-            range_trie.insert(words, range_value)
-            used_words.add(words)
+                range_trie.insert(broken, range_value)
+                used_words.add(broken)
 
     return range_trie
