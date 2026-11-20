@@ -2478,6 +2478,43 @@ def test_number_word_turkish_i() -> None:
             assert result.entities["minutes"].text_span == (9, 9 + len(spoken)), text
 
 
+def test_number_word_german_eszett() -> None:
+    """Test German number words written with "ß" or the "ss" substitute.
+
+    unicode-rbnf spells German thirty as "dreißig", but "ss" is the standard
+    substitute for "ß" (and the only spelling used in Switzerland), so a speaker
+    may well say "dreissig". The number word lookup folds case with str.lower to
+    keep match positions aligned, which leaves "ß" alone, so the "ss" spelling
+    must be indexed separately. The "ß" spelling must keep working, and the span
+    of a slot that follows the number must stay aligned either way.
+    """
+    yaml_text = """
+    language: "de"
+    intents:
+      SetBrightness:
+        data:
+          - sentences:
+              - "{brightness} prozent"
+    lists:
+      brightness:
+        range:
+          from: 0
+          to: 100
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    # 30 is "dreißig", 32 is "zweiunddreißig" -- both contain "ß".
+    for number_word, number_value in (("dreißig", 30), ("zweiunddreißig", 32)):
+        for spoken in (number_word, number_word.replace("ß", "ss")):
+            text = f"{spoken} prozent"
+            result = recognize(text, intents)
+            assert result is not None, text
+            assert result.entities["brightness"].value == number_value, text
+            assert result.entities["brightness"].text_span == (0, len(spoken)), text
+
+
 def test_wildcard_text_spans() -> None:
     """Test that text spans accurately capture wildcards."""
     yaml_text = """
