@@ -931,13 +931,17 @@ def match_expression(
                                     )
                                 ]
                                 if wildcard is None:
+                                    # Don't advance text_index here: matching
+                                    # TextChunk(number_text) below consumes the
+                                    # number and advances it. Doing both shifts
+                                    # every later text_span right by the length
+                                    # of the number word.
                                     yield from match_expression(
                                         settings,
                                         MatchContext(
                                             text=context.text,
                                             entities=entities,
-                                            text_index=context.text_index
-                                            + len(number_text),
+                                            text_index=context.text_index,
                                             # Copy over
                                             intent_context=context.intent_context,
                                             is_start_of_word=context.is_start_of_word,
