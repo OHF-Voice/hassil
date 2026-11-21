@@ -12,7 +12,7 @@ from yaml import safe_load
 from .expression import Expression, Sentence, TextChunk
 from .parse_expression import parse_sentence
 from .trie import Trie
-from .util import fold_case, is_template, merge_dict, normalize_text
+from .util import fold_case, is_template, merge_dict, normalize_text, remove_punctuation
 
 _BREAK_WORDS_TABLE = str.maketrans("-_", "  ")
 
@@ -633,4 +633,11 @@ def _maybe_parse_template(text: str, allow_template: bool = True) -> Expression:
     if allow_template and is_template(text):
         return parse_sentence(text).expression
 
-    return TextChunk(normalize_text(text))
+    # Incoming text is normalized *and* punctuation-stripped before matching
+    # (normalize_for_matching). A plain value keeps its punctuation unless it is
+    # stripped the same way here, so an internal abbreviation period -- e.g. a
+    # media title or entity name like "Sgt. Pepper" or "Mr. Coffee" -- leaves a
+    # "." in the stored chunk that "Sgt Pepper" can never match. remove_punctuation
+    # runs after normalize_text so both sides are derived the same way, and it
+    # preserves initialisms ("A.C. Milan") exactly as the match path does.
+    return TextChunk(remove_punctuation(normalize_text(text)))
