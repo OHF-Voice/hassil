@@ -32,6 +32,7 @@ from .recognize import (
     recognize,
     recognize_all,
     recognize_best,
+    recognize_ranked,
 )
 from .sample import sample_expression, sample_intents
 from .trie import Trie, TrieNode
@@ -70,6 +71,7 @@ __all__ = [
     "recognize",
     "recognize_all",
     "recognize_best",
+    "recognize_ranked",
     "RecognizeResult",
     "RuleReference",
     "sample_expression",

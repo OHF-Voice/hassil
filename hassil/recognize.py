@@ -741,20 +741,11 @@ def recognize_best(
     best_metadata_key: Optional[str] = None,
     best_slot_name: Optional[str] = None,
 ) -> Optional[RecognizeResult]:
-    """Find the best result with the following priorities:
+    """Find the best result, which is the first result of "recognize_ranked".
 
-    1. The result that has "best_metadata_key" in its metadata
-    2. The result that has an entity for "best_slot_name" and longest text
-    3. The result that matches the most literal text
-
-    See "recognize_all" for other parameters.
+    See "recognize_ranked" for the priorities and parameters.
     """
-    metadata_found = False
-    slot_found = False
-    best_results: List[RecognizeResult] = []
-    best_slot_quality: Optional[int] = None
-
-    for result in recognize_all(
+    results = recognize_ranked(
         text,
         intents,
         slot_lists=slot_lists,
@@ -764,58 +755,82 @@ def recognize_best(
         default_response=default_response,
         allow_unmatched_entities=allow_unmatched_entities,
         language=language,
-    ):
-        # Prioritize intents with a specific metadata key
-        if best_metadata_key is not None:
-            is_metadata = (
-                result.intent_metadata is not None
-                and result.intent_metadata.get(best_metadata_key)
-            )
+        best_metadata_key=best_metadata_key,
+        best_slot_name=best_slot_name,
+    )
+    return results[0] if results else None
 
-            if metadata_found and not is_metadata:
-                continue
 
-            if (not metadata_found) and is_metadata:
-                metadata_found = True
+def recognize_ranked(
+    text: str,
+    intents: Intents,
+    slot_lists: Optional[Dict[str, SlotList]] = None,
+    expansion_rules: Optional[Dict[str, Sentence]] = None,
+    skip_words: Optional[Iterable[str]] = None,
+    intent_context: Optional[Dict[str, Any]] = None,
+    default_response: Optional[str] = "default",
+    allow_unmatched_entities: bool = False,
+    language: Optional[str] = None,
+    best_metadata_key: Optional[str] = None,
+    best_slot_name: Optional[str] = None,
+) -> List[RecognizeResult]:
+    """Find all results, best first, with the following priorities:
 
-                # Clear builtin results
-                slot_found = False
-                best_results = []
-                best_slot_quality = None
+    1. Results that have "best_metadata_key" in their metadata
+    2. Results that have a non-wildcard entity for "best_slot_name", longest
+       entity text first
+    3. Results with fewer wildcards and more literal text matched (see
+       "_get_result_score")
 
-        # Prioritize results with a specific slot
-        if best_slot_name:
-            entity = result.entities.get(best_slot_name)
-            is_slot = (entity is not None) and not entity.is_wildcard
+    Callers that need to look past the best result (for example, to prefer a
+    lower-ranked result for reasons hassil cannot know) can walk this list in
+    order.
 
-            if slot_found and not is_slot:
-                continue
+    See "recognize_all" for other parameters.
+    """
+    results = list(
+        recognize_all(
+            text,
+            intents,
+            slot_lists=slot_lists,
+            expansion_rules=expansion_rules,
+            skip_words=skip_words,
+            intent_context=intent_context,
+            default_response=default_response,
+            allow_unmatched_entities=allow_unmatched_entities,
+            language=language,
+        )
+    )
+    results.sort(
+        key=lambda result: _get_ranked_score(result, best_metadata_key, best_slot_name)
+    )
+    return results
 
-            if (not slot_found) and is_slot:
-                slot_found = True
 
-                # Clear non-slot results
-                best_results = []
+def _get_ranked_score(
+    result: RecognizeResult,
+    best_metadata_key: Optional[str],
+    best_slot_name: Optional[str],
+) -> Tuple[bool, bool, int, Tuple[int, int, int, str]]:
+    """Get sort score for "recognize_ranked", lowest first."""
+    is_metadata = bool(
+        (best_metadata_key is not None)
+        and (result.intent_metadata is not None)
+        and result.intent_metadata.get(best_metadata_key)
+    )
 
-            if is_slot and (entity is not None) and isinstance(entity.value, str):
-                # Prioritize results with a better slot value
-                slot_quality = len(entity.text)
-                if (best_slot_quality is None) or (slot_quality > best_slot_quality):
-                    best_slot_quality = slot_quality
+    slot_text_len: Optional[int] = None
+    if best_slot_name:
+        entity = result.entities.get(best_slot_name)
+        if (entity is not None) and (not entity.is_wildcard):
+            slot_text_len = len(entity.text)
 
-                    # Clear worse slot results
-                    best_results = []
-                elif slot_quality < best_slot_quality:
-                    continue
-
-        # Accumulate results. We will resolve the ambiguity below.
-        best_results.append(result)
-
-    if best_results:
-        # Prioritize matches with fewer wildcards and more literal text matched.
-        return sorted(best_results, key=_get_result_score)[0]
-
-    return None
+    return (
+        not is_metadata,
+        slot_text_len is None,
+        -(slot_text_len or 0),
+        _get_result_score(result),
+    )
 
 
 def _get_result_score(result: RecognizeResult) -> Tuple[int, int, int, str]:

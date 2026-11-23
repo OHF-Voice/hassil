@@ -3,7 +3,7 @@ from typing import Dict, Set, cast
 
 import pytest
 
-from hassil import Intents, recognize, recognize_all, recognize_best
+from hassil import Intents, recognize, recognize_all, recognize_best, recognize_ranked
 from hassil.expression import TextChunk
 from hassil.intents import SlotList, TextSlotList
 from hassil.models import MatchEntity, UnmatchedRangeEntity, UnmatchedTextEntity
@@ -1941,6 +1941,83 @@ def test_recognize_best():
     assert result is not None
     assert result.entities.keys() == {"name"}
     assert result.entities["name"].value == "bedroom lamp"
+
+
+def test_recognize_ranked():
+    yaml_text = """
+    language: "en"
+    intents:
+      TurnOn:
+        data:
+          - sentences:
+              - "{anything} lamp"
+            metadata:
+              best_key: "best value"
+          - sentences:
+              - "turn on {area} lamp"
+              - "turn on {area} {name}"
+              - "turn on {name}"
+    lists:
+      area:
+        values:
+          - bedroom
+      name:
+        values:
+          - bedroom lamp
+          - lamp
+      anything:
+        wildcard: true
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    def summarize(results):
+        return [
+            {name: entity.text for name, entity in result.entities.items()}
+            for result in results
+        ]
+
+    # Fewer wildcards and more literal text first
+    results = recognize_ranked("turn on bedroom lamp", intents)
+    assert summarize(results) == [
+        {"area": "bedroom"},
+        {"area": "bedroom", "name": "lamp"},
+        {"name": "bedroom lamp"},
+        {"anything": "turn on bedroom"},
+    ]
+
+    # Results with the slot first, longest slot text first, then the rest
+    results = recognize_ranked("turn on bedroom lamp", intents, best_slot_name="name")
+    assert summarize(results) == [
+        {"name": "bedroom lamp"},
+        {"area": "bedroom", "name": "lamp"},
+        {"area": "bedroom"},
+        {"anything": "turn on bedroom"},
+    ]
+
+    # Results with the metadata key first
+    results = recognize_ranked(
+        "turn on bedroom lamp",
+        intents,
+        best_metadata_key="best_key",
+        best_slot_name="name",
+    )
+    assert summarize(results) == [
+        {"anything": "turn on bedroom"},
+        {"name": "bedroom lamp"},
+        {"area": "bedroom", "name": "lamp"},
+        {"area": "bedroom"},
+    ]
+
+    # recognize_best is the first ranked result
+    for kwargs in ({}, {"best_slot_name": "name"}, {"best_metadata_key": "best_key"}):
+        best = recognize_best("turn on bedroom lamp", intents, **kwargs)
+        assert best is not None
+        assert best == recognize_ranked("turn on bedroom lamp", intents, **kwargs)[0]
+
+    assert not recognize_ranked("turn on the fan", intents)
+    assert recognize_best("turn on the fan", intents) is None
 
 
 def test_regex_branching():

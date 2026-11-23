@@ -1,7 +1,10 @@
 # Changelog
 
-## 3.12.2
+## 3.13.0
 
+- Add `recognize_ranked`, which returns every result in the order `recognize_best` ranks them, so callers can fall back to a lower-ranked result without re-implementing the ranking
+    - `recognize_best` now returns the first result of `recognize_ranked`
+    - A `best_slot_name` entity whose value is not a string now ranks by its text length like any other, instead of depending on the order results were found
 - Bump unicode-rbnf
 - Compare `required_keywords` without case, like the rest of matching, so "Turn on Light" is not skipped when the keyword is "light" ([#311](https://github.com/OHF-Voice/hassil/pull/311))
     - Uses `fold_case`, so the Turkish I matches in any case too ("IŞIK" for "ışık")
