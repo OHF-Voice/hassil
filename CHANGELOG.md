@@ -8,6 +8,10 @@
 - Bump unicode-rbnf
 - Compare `required_keywords` without case, like the rest of matching, so "Turn on Light" is not skipped when the keyword is "light" ([#311](https://github.com/OHF-Voice/hassil/pull/311))
     - Uses `fold_case`, so the Turkish I matches in any case too ("IŞIK" for "ışık")
+- Fold the Turkish I in the slot value index and template prefilter, so a value named "Işık" is offered for "ışık kapat" ([#304](https://github.com/OHF-Voice/hassil/pull/304))
+- Match range number words written with any Turkish I ("ALTI dakika", "İki dakika"), and stop an earlier "İ" from shifting number word positions ([#312](https://github.com/OHF-Voice/hassil/pull/312))
+- Match the `ss` spelling of German number words with `ß` in range lists, so "dreissig" matches like "dreißig" ([#321](https://github.com/OHF-Voice/hassil/pull/321))
+- Fix the `text_span` of slots after a range number word, which was shifted right by the number word's length ([#322](https://github.com/OHF-Voice/hassil/pull/322))
 
 ## 3.12.1
 
