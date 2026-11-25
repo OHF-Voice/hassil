@@ -8,6 +8,7 @@ from hassil.expression import TextChunk
 from hassil.intents import SlotList, TextSlotList
 from hassil.models import MatchEntity, UnmatchedRangeEntity, UnmatchedTextEntity
 from hassil.recognize import MISSING_ENTITY
+from hassil.string_matcher import _RANGE_TRIE_CACHE
 from hassil.util import normalize_for_matching
 
 TEST_YAML = """
@@ -1889,6 +1890,43 @@ def test_range_multiplier(intents, slot_lists):
     assert result.entities.keys() == {"volume_level"}
     assert result.entities["volume_level"].value == 0.5
     assert result.entities["volume_level"].text == "50"
+
+
+@pytest.mark.parametrize("number", ["thirty", "30"])
+@pytest.mark.parametrize("down_first", [False, True], ids=["set-first", "down-first"])
+def test_ranges_with_different_multipliers(
+    number: str, down_first: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each command must use its own multiplier regardless of recognition order."""
+    # Start each order with a cold cache, then share it across the two commands.
+    monkeypatch.setitem(_RANGE_TRIE_CACHE, "en", {})
+    yaml_text = """
+    language: en
+    intents:
+      SetVolume:
+        data:
+          - sentences: ["set volume to {volume}"]
+      StepVolume:
+        data:
+          - sentences: ["turn it down by {volume_step_down}"]
+    lists:
+      volume:
+        range: {from: 0, to: 100}
+      volume_step_down:
+        range: {from: 0, to: 100, multiplier: -1}
+    """
+    intents = Intents.from_yaml(io.StringIO(yaml_text))
+    commands = [
+        (f"set volume to {number}", "volume", 30),
+        (f"turn it down by {number}", "volume_step_down", -30),
+    ]
+    if down_first:
+        commands.reverse()
+
+    for sentence, slot, expected in commands:
+        result = recognize(sentence, intents)
+        assert result is not None
+        assert result.entities[slot].value == expected
 
 
 def test_recognize_best():

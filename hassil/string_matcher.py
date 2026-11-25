@@ -64,7 +64,7 @@ BREAK_WORDS_TABLE = str.maketrans("-_", "  ")
 # the same way when they are parsed, so chunk.text never ends with "’" either.
 WORD_END_CHARS = (" ", "'")
 
-# lang -> number -> words
+# Language -> range settings -> trie mapping number words to unscaled values.
 _RANGE_TRIE_CACHE: Dict[
     str, Dict[Tuple[int, int, int, Optional[RangeFractionType]], Trie]
 ] = defaultdict(dict)
@@ -919,6 +919,9 @@ def match_expression(
                                 # this slot as "not a number" below.
                                 words_match = True
 
+                                if range_list.multiplier is not None:
+                                    range_value *= range_list.multiplier
+
                                 entities = context.entities + [
                                     MatchEntity(
                                         name=list_ref.slot_name,
@@ -1094,10 +1097,6 @@ def _build_range_trie(language: str, range_list: RangeSlotList) -> Trie:
     engine = get_rbnf_engine(language)
 
     for word_number in range_list.get_numbers():
-        range_value: Union[float, int] = word_number
-        if range_list.multiplier is not None:
-            range_value *= range_list.multiplier
-
         format_result = engine.format_number(word_number)
         used_words = set()
 
@@ -1112,14 +1111,14 @@ def _build_range_trie(language: str, range_list: RangeSlotList) -> Trie:
                 if variant in used_words:
                     continue
 
-                range_trie.insert(variant, range_value)
+                range_trie.insert(variant, word_number)
                 used_words.add(variant)
 
                 broken = variant.translate(BREAK_WORDS_TABLE)
                 if broken in used_words:
                     continue
 
-                range_trie.insert(broken, range_value)
+                range_trie.insert(broken, word_number)
                 used_words.add(broken)
 
     return range_trie
