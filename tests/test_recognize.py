@@ -444,6 +444,42 @@ def test_list_text_normalized() -> None:
     assert result.entities["test_name"].value == "tEsT    1"
 
 
+def test_list_value_internal_abbreviation_period() -> None:
+    """A list value with an abbreviation period matches with or without the dot.
+
+    Incoming text is punctuation-stripped before matching, so a value like
+    "Sgt. Pepper" must be stripped the same way or the "." only ever sits on the
+    stored side and the value never matches. Initialisms ("A.C.") are preserved
+    on both sides and keep matching.
+    """
+    yaml_text = """
+    language: "en"
+    intents:
+      Play:
+        data:
+          - sentences:
+              - "play {track}"
+    lists:
+      track:
+        values:
+          - "Sgt. Pepper"
+          - "A.C. Milan"
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    for text in ("play Sgt. Pepper", "play Sgt Pepper"):
+        result = recognize(text, intents)
+        assert result is not None, text
+        assert result.entities["track"].value == "Sgt. Pepper"
+
+    # Initialisms are unaffected: the period is kept on both sides.
+    result = recognize("play A.C. Milan", intents)
+    assert result is not None
+    assert result.entities["track"].value == "A.C. Milan"
+
+
 def test_sentence_text_normalized() -> None:
     """Ensure sentence text is normalized."""
     yaml_text = """
