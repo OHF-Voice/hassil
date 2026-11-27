@@ -507,7 +507,9 @@ class Intents:
                                 ).items()
                             },
                             response=data_dict.get("response"),
-                            wildcard_list_names=wildcard_list_names,
+                            wildcard_list_names=_get_wildcard_list_names(
+                                wildcard_list_names, data_dict.get("lists", {})
+                            ),
                             metadata=data_dict.get("metadata"),
                             required_keywords=(
                                 {
@@ -545,6 +547,23 @@ class Intents:
             skip_words=input_dict.get("skip_words", []),
             settings=_parse_settings(input_dict.get("settings", {})),
         )
+
+
+def _get_wildcard_list_names(
+    wildcard_list_names: Set[str], local_lists: Dict[str, Any]
+) -> Set[str]:
+    """Add the wildcard lists of a data block to the top-level wildcard lists.
+
+    A local list replaces a top-level list with the same name.
+    """
+    if not local_lists:
+        return wildcard_list_names
+
+    return (wildcard_list_names - local_lists.keys()) | {
+        list_name
+        for list_name, list_dict in local_lists.items()
+        if list_dict.get("wildcard", False)
+    }
 
 
 def _parse_list(

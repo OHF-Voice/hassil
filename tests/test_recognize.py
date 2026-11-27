@@ -1474,6 +1474,67 @@ def test_wildcard_ordering() -> None:
     assert result.entities["artist"].value == "the beatles"
 
 
+def test_wildcard_ordering_local_lists() -> None:
+    """Test wildcard ordering when the wildcard lists are local to the intent data."""
+    yaml_text = """
+    language: "en"
+    intents:
+      Test:
+        data:
+          - sentences:
+              - "play {album} by {artist}"
+              - "play {album} by {artist} in {room}"
+            lists:
+              album:
+                wildcard: true
+              artist:
+                wildcard: true
+              room:
+                wildcard: true
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    assert intents.intents["Test"].data[0].wildcard_list_names == {
+        "album",
+        "artist",
+        "room",
+    }
+
+    sentence = "play the white album by the beatles in the living room"
+    result = recognize(sentence, intents)
+    assert result is not None, f"{sentence} should match"
+    assert set(result.entities.keys()) == {"album", "artist", "room"}
+    assert result.entities["album"].value == "the white album"
+    assert result.entities["artist"].value == "the beatles"
+    assert result.entities["room"].value == "the living room"
+
+
+def test_local_list_replaces_wildcard_list() -> None:
+    """Test that a local text list is not treated as the wildcard list it replaces."""
+    yaml_text = """
+    language: "en"
+    intents:
+      Test:
+        data:
+          - sentences:
+              - "play {album}"
+            lists:
+              album:
+                values:
+                  - "abbey road"
+    lists:
+      album:
+        wildcard: true
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    assert not intents.intents["Test"].data[0].wildcard_list_names
+
+
 def test_ordering_only_wildcards() -> None:
     """Test that re-ordering only affects wildcards."""
     yaml_text = """
