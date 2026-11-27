@@ -330,7 +330,12 @@ def match_expression(
                         ),
                         expression,
                     )
-                    start_idx = match_first(context_text, chunk_text, start_idx + 1)
+                    start_idx = match_first(
+                        context_text,
+                        chunk_text,
+                        start_idx + 1,
+                        start_of_word=is_wildcard_end_of_word,
+                    )
 
                 # Do not continue with matching
                 return

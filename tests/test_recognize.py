@@ -1340,6 +1340,39 @@ def test_wildcard() -> None:
     assert result.entities["artist"].is_wildcard
 
 
+def test_wildcard_next_word_not_inside_word() -> None:
+    """Test that later matches of the word after a wildcard keep the word boundary."""
+    yaml_text = """
+    language: "en"
+    intents:
+      Test:
+        data:
+          - sentences:
+              - "{name} on"
+    lists:
+      name:
+        wildcard: true
+    """
+
+    with io.StringIO(yaml_text) as test_file:
+        intents = Intents.from_yaml(test_file)
+
+    # The first "on" is a word but leaves text over; "on" inside "moon" must not be tried
+    sentence = "who was the first person on the moon"
+    assert recognize(sentence, intents) is None, f"{sentence} should not match"
+
+    sentence = "the porch light on"
+    result = recognize(sentence, intents)
+    assert result is not None, f"{sentence} should match"
+    assert result.entities["name"].value == "the porch light"
+
+    # A later "on" that is a whole word is still found
+    sentence = "carry on and on"
+    result = recognize(sentence, intents)
+    assert result is not None, f"{sentence} should match"
+    assert result.entities["name"].value == "carry on and"
+
+
 def test_wildcard_degenerate() -> None:
     """Test degenerate case for wildcards."""
     yaml_text = """
